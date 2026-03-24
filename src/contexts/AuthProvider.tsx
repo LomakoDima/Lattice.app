@@ -1,5 +1,5 @@
 import { useState, useEffect, ReactNode, useCallback } from 'react';
-import { apiFetch, fetchRefreshSessionDeduped } from '../lib/api';
+import { apiAbsoluteUrl, apiFetch, fetchRefreshSessionDeduped } from '../lib/api';
 import { authDebug } from '../lib/authDebug';
 import { AuthContext } from './auth-context';
 import type { LocalUser, OAuthProvider } from './auth-types';
@@ -28,10 +28,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true);
 
   const refreshUser = useCallback(async () => {
-    const me = await apiFetch('/api/auth/me', { method: 'GET' });
-    if (me.ok) {
-      const data = (await me.json()) as { user: ApiUser };
-      setUser(mapUser(data.user));
+    try {
+      const me = await apiFetch('/api/auth/me', { method: 'GET' });
+      if (me.ok) {
+        const data = (await me.json()) as { user: ApiUser };
+        setUser(mapUser(data.user));
+      }
+    } catch {
+      /* ignore */
     }
   }, []);
 
@@ -42,67 +46,78 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
 
     const tryMe = async (): Promise<boolean> => {
-      const me = await apiFetch('/api/auth/me', { method: 'GET' });
-      authDebug('bootstrap_me_response', { status: me.status, ok: me.ok });
-      if (!me.ok) return false;
-      const data = (await me.json()) as { user: ApiUser };
-      setUser(mapUser(data.user));
-      return true;
+      try {
+        const me = await apiFetch('/api/auth/me', { method: 'GET' });
+        authDebug('bootstrap_me_response', { status: me.status, ok: me.ok });
+        if (!me.ok) return false;
+        const data = (await me.json()) as { user: ApiUser };
+        setUser(mapUser(data.user));
+        return true;
+      } catch (e) {
+        authDebug('bootstrap_me_error', { message: e instanceof Error ? e.message : String(e) });
+        return false;
+      }
     };
 
     const tryRefresh = async (): Promise<boolean> => {
-      const r = await fetchRefreshSessionDeduped();
-      authDebug('bootstrap_refresh_response', { status: r.status, ok: r.ok });
-      if (r.status === 204) return false;
-      if (!r.ok) return false;
-      const data = (await r.json()) as { user: ApiUser };
-      setUser(mapUser(data.user));
-      return true;
+      try {
+        const r = await fetchRefreshSessionDeduped();
+        authDebug('bootstrap_refresh_response', { status: r.status, ok: r.ok });
+        if (r.status === 204) return false;
+        if (!r.ok) return false;
+        const data = (await r.json()) as { user: ApiUser };
+        setUser(mapUser(data.user));
+        return true;
+      } catch (e) {
+        authDebug('bootstrap_refresh_error', { message: e instanceof Error ? e.message : String(e) });
+        return false;
+      }
     };
 
-    const params = new URLSearchParams(window.location.search);
-    const oauth = params.get('oauth');
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const oauth = params.get('oauth');
 
-    if (oauth === 'success') {
-      authDebug('bootstrap_oauth_success_branch', {});
-      const path = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, '', path);
+      if (oauth === 'success') {
+        authDebug('bootstrap_oauth_success_branch', {});
+        const path = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', path);
+        if (await tryMe()) {
+          authDebug('bootstrap_oauth_success_done', { via: 'me' });
+          return;
+        }
+        if (await tryRefresh()) {
+          authDebug('bootstrap_oauth_success_done', { via: 'refresh' });
+          return;
+        }
+        setUser(null);
+        authDebug('bootstrap_oauth_success_done', { sessionRestored: false });
+        return;
+      }
+
+      if (oauth === 'error') {
+        authDebug('bootstrap_oauth_error_query', {});
+        const path = window.location.pathname + window.location.hash;
+        window.history.replaceState({}, '', path);
+      }
+
       if (await tryMe()) {
-        authDebug('bootstrap_oauth_success_done', { via: 'me' });
-        setLoading(false);
+        authDebug('bootstrap_done', { via: 'me' });
         return;
       }
       if (await tryRefresh()) {
-        authDebug('bootstrap_oauth_success_done', { via: 'refresh' });
-        setLoading(false);
+        authDebug('bootstrap_done', { via: 'refresh' });
         return;
       }
+
       setUser(null);
+      authDebug('bootstrap_done', { user: null });
+    } catch (e) {
+      authDebug('bootstrap_fatal', { message: e instanceof Error ? e.message : String(e) });
+      setUser(null);
+    } finally {
       setLoading(false);
-      authDebug('bootstrap_oauth_success_done', { sessionRestored: false });
-      return;
     }
-
-    if (oauth === 'error') {
-      authDebug('bootstrap_oauth_error_query', {});
-      const path = window.location.pathname + window.location.hash;
-      window.history.replaceState({}, '', path);
-    }
-
-    if (await tryMe()) {
-      setLoading(false);
-      authDebug('bootstrap_done', { via: 'me' });
-      return;
-    }
-    if (await tryRefresh()) {
-      setLoading(false);
-      authDebug('bootstrap_done', { via: 'refresh' });
-      return;
-    }
-
-    setUser(null);
-    setLoading(false);
-    authDebug('bootstrap_done', { user: null });
   }, []);
 
   useEffect(() => {
@@ -162,8 +177,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signInWithOAuth = async (provider: OAuthProvider) => {
-    authDebug('signInWithOAuth', { provider });
-    window.location.href = `/api/auth/oauth/${provider}`;
+    authDebug('signInWithOAuth', { provider, apiBase: import.meta.env.VITE_API_URL || '(same-origin)' });
+    window.location.href = apiAbsoluteUrl(`/api/auth/oauth/${provider}`);
   };
 
   const signOut = async () => {

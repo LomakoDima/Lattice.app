@@ -46,9 +46,9 @@ In **Google Cloud / GitHub** OAuth apps, set authorized redirect URI to:
 
 | Variable | Value |
 |----------|--------|
-| `VITE_API_URL` | `https://<your-api>.onrender.com` — **no trailing slash** |
+| `VITE_API_URL` | `https://<your-api>.onrender.com` — **no trailing slash**. **Required** in production: without it, `/api` requests go to Vercel (there is no API there) and the UI can show an endless loading spinner. |
 
-Redeploy after changing env.
+Set for **Production** (and **Preview** if needed). Redeploy after changing env.
 
 ## 4. Notes
 

@@ -3,6 +3,16 @@ import { authDebug } from './authDebug';
 const API_BASE = import.meta.env.VITE_API_URL ?? '';
 
 /**
+ * Full URL for browser navigation (OAuth redirect). On Vercel you must set `VITE_API_URL` to the Render API
+ * origin — relative `/api/...` would hit Vercel (no API) and break OAuth.
+ */
+export function apiAbsoluteUrl(path: string): string {
+  if (path.startsWith('http')) return path;
+  const p = path.startsWith('/') ? path : `/${path}`;
+  return `${API_BASE}${p}`;
+}
+
+/**
  * API requests use cookies for auth: httpOnly access + refresh tokens (not readable by JS).
  * Always send credentials so cookies reach the API (same-site / proxied).
  */
