@@ -1,5 +1,7 @@
 # Render Blueprint — https://render.com/docs/blueprint-spec
 # New → Blueprint → connect repo. Add secrets in the dashboard (see DEPLOY.md).
+#
+# API only: build must NOT run `npm run build` (Vite). Use `npm ci` + `npm run start:api`.
 
 services:
   - type: web

@@ -8,9 +8,13 @@ Create a **PostgreSQL** instance, copy **Internal Database URL** (for API on Ren
 
 - **New → Blueprint** (connect repo, select `render.yaml`) or **Web Service** manually:
   - **Root directory:** repo root  
-  - **Build:** `npm ci`  
-  - **Start:** `npm run start:api`  
+  - **Build Command:** `npm ci` only — **do not** run `npm run build` here (that is Vite for Vercel).  
+  - **Start Command:** `npm run start:api`  
   - **Health check path:** `/api/health`
+
+If you see **`sh: 1: vite: not found`**, the API service is running the frontend build. Remove `npm run build` from the Render build command and redeploy.
+
+With `NODE_ENV=production`, `npm ci` skips **devDependencies** — that is fine for the API (`tsx` is in `dependencies`). Vite is a devDependency and is **not** installed, and **not** needed on Render.
 
 **Environment variables** (Render → service → Environment):
 
