@@ -49,6 +49,11 @@ app.use(cors({ origin: getNormalizedFrontendOrigin(), credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(passport.initialize());
+
+app.get('/api/health', (_req, res) => {
+  res.status(200).json({ ok: true, service: 'lattice-api' });
+});
+
 app.use('/api/auth', authRouter);
 app.use('/api/goals', goalsRouter);
 app.use('/api/tasks', tasksRouter);

@@ -1,6 +1,12 @@
 import type { CookieOptions } from 'express';
-import { env } from '../config/env.js';
+import { env, isSplitOriginDeployment } from '../config/env.js';
 import { REFRESH_COOKIE_MAX_MS } from '../services/tokenService.js';
+
+/** Cross-origin frontend (e.g. Vercel) + API (e.g. Render) requires SameSite=None + Secure for credentialed requests. */
+function sameSiteAttr(): 'lax' | 'none' {
+  if (env.NODE_ENV === 'production' && isSplitOriginDeployment()) return 'none';
+  return 'lax';
+}
 
 const ACCESS_MAX_MS = 15 * 60 * 1000;
 
@@ -16,7 +22,7 @@ export function refreshCookieOpts(): CookieOptions {
   return {
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
     path: '/api/auth',
     maxAge: REFRESH_COOKIE_MAX_MS,
   };
@@ -27,7 +33,7 @@ export function refreshCookieClearOpts(): CookieOptions {
     path: '/api/auth',
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
   };
 }
 
@@ -36,7 +42,7 @@ export function accessCookieOpts(): CookieOptions {
   return {
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
     path: '/api',
     maxAge: ACCESS_MAX_MS,
   };
@@ -47,7 +53,7 @@ export function accessCookieClearOpts(): CookieOptions {
     path: '/api',
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
   };
 }
 
@@ -55,7 +61,7 @@ export function pending2FACookieOpts(): CookieOptions {
   return {
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
     path: '/api/auth',
     maxAge: 5 * 60 * 1000,
   };
@@ -66,6 +72,6 @@ export function pending2FACookieClearOpts(): CookieOptions {
     path: '/api/auth',
     httpOnly: true,
     secure: secureCookie(),
-    sameSite: 'lax',
+    sameSite: sameSiteAttr(),
   };
 }
