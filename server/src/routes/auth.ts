@@ -316,9 +316,22 @@ function logOAuthProviderError(provider: string) {
   };
 }
 
+/** Callback URLs are hit by Google/GitHub even when env is missing — skip passport or "Unknown strategy" crashes. */
+function oauthCallbackRequiresProvider(provider: 'google' | 'github') {
+  return (_req: Request, res: Response, next: NextFunction) => {
+    if (!isOAuthConfigured(provider)) {
+      authLog('oauth_callback_unconfigured', { provider });
+      res.redirect(`${getNormalizedFrontendOrigin()}/auth?oauth=unconfigured`);
+      return;
+    }
+    next();
+  };
+}
+
 authRouter.get(
   '/oauth/google/callback',
   authLimiter,
+  oauthCallbackRequiresProvider('google'),
   logOAuthProviderError('google'),
   passport.authenticate('google', {
     failureRedirect: oauthFailureRedirect(),
@@ -356,6 +369,7 @@ authRouter.get(
 authRouter.get(
   '/oauth/github/callback',
   authLimiter,
+  oauthCallbackRequiresProvider('github'),
   logOAuthProviderError('github'),
   passport.authenticate('github', {
     failureRedirect: oauthFailureRedirect(),

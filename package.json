@@ -12,6 +12,7 @@
     "dev:server": "tsx watch server/src/index.ts",
     "db:migrate": "tsx server/src/db/runMigrate.ts",
     "build": "vite build",
+    "start": "tsx server/src/index.ts",
     "start:api": "tsx server/src/index.ts",
     "lint": "eslint .",
     "preview": "vite preview",

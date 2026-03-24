@@ -9,7 +9,7 @@ Create a **PostgreSQL** instance, copy **Internal Database URL** (for API on Ren
 - **New → Blueprint** (connect repo, select `render.yaml`) or **Web Service** manually:
   - **Root directory:** repo root  
   - **Build Command:** `npm ci` only — **do not** run `npm run build` here (that is Vite for Vercel).  
-  - **Start Command:** `npm run start:api`  
+  - **Start Command:** `npm start` (alias: `npm run start:api`)  
   - **Health check path:** `/api/health`
 
 If you see **`sh: 1: vite: not found`**, the API service is running the frontend build. Remove `npm run build` from the Render build command and redeploy.
