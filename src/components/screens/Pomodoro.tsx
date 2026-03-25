@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Timer, Coffee, Pause, Play, RotateCcw, Target, ListTodo } from 'lucide-react';
+import { Timer, Coffee, Pause, Play, RotateCcw, Target, ListTodo, Music2 } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useAuth } from '../../contexts/useAuth';
@@ -7,6 +7,7 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { showFocusSessionEndNotification } from '../../lib/focusNotifications';
 import { listGoals, listTasks } from '../../lib/localWorkspace';
 import { Database } from '../../types/database';
+import { loadPomodoroMusicPrefs, savePomodoroMusicPrefs, type PomodoroMusicPrefs } from '../../lib/pomodoroMusic';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type GoalPick = { id: string; title: string };
@@ -43,6 +44,8 @@ export function Pomodoro() {
   const [goals, setGoals] = useState<GoalPick[]>([]);
   const [selectedGoalId, setSelectedGoalId] = useState('');
   const [selectedTaskId, setSelectedTaskId] = useState('');
+  const [musicPrefs, setMusicPrefs] = useState<PomodoroMusicPrefs>(() => loadPomodoroMusicPrefs());
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const pomoPhaseRef = useRef(pomoPhase);
   pomoPhaseRef.current = pomoPhase;
 
@@ -145,6 +148,44 @@ export function Pomodoro() {
     if (!selectedTaskId) return;
     setCurrentScreen('tasks');
   };
+
+  const patchMusicPrefs = useCallback((partial: Partial<PomodoroMusicPrefs>) => {
+    setMusicPrefs((prev) => {
+      const next = { ...prev, ...partial };
+      savePomodoroMusicPrefs(next);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a) return;
+    a.loop = true;
+    const url = musicPrefs.url.trim();
+    if (!url) {
+      a.removeAttribute('src');
+      a.pause();
+      return;
+    }
+    if (a.dataset.latticeSrc !== url) {
+      a.dataset.latticeSrc = url;
+      a.src = url;
+    }
+    a.volume = musicPrefs.volume;
+  }, [musicPrefs.url, musicPrefs.volume]);
+
+  useEffect(() => {
+    const a = audioRef.current;
+    if (!a || !musicPrefs.url.trim()) return;
+    const shouldPlay = pomoPhase === 'work' && pomoRunning;
+    if (shouldPlay) {
+      void a.play().catch(() => {
+        /* invalid URL, CORS, or autoplay policy */
+      });
+    } else {
+      a.pause();
+    }
+  }, [pomoPhase, pomoRunning, musicPrefs.url]);
 
   useEffect(() => {
     if (!pomoRunning) return;
@@ -303,6 +344,61 @@ export function Pomodoro() {
             ) : null}
           </div>
         </div>
+      </Card>
+
+      <Card glass className="p-6 sm:p-7">
+        <div className="mb-4 flex items-start gap-3 border-b border-white/[0.06] pb-4">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-nexus-void/60">
+            <Music2 className="h-[18px] w-[18px] text-violet-300/90" strokeWidth={1.75} />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-nexus-accent/90">Optional</p>
+            <h2 className="font-display mt-1 text-lg font-semibold text-white">Focus music</h2>
+            <p className="mt-1 text-xs text-neutral-500">
+              Paste a direct link to an audio file or stream. Plays only during <span className="text-neutral-400">work</span>{' '}
+              while the timer is running — pauses on break or pause.
+            </p>
+          </div>
+        </div>
+        <div className="space-y-4">
+          <div>
+            <label htmlFor="pomo-music-url" className={labelClass}>
+              Audio URL
+            </label>
+            <input
+              id="pomo-music-url"
+              type="url"
+              inputMode="url"
+              value={musicPrefs.url}
+              onChange={(e) => patchMusicPrefs({ url: e.target.value })}
+              placeholder="https://…/focus.mp3"
+              className={inputClass}
+              autoComplete="off"
+            />
+          </div>
+          <div>
+            <label htmlFor="pomo-music-vol" className={labelClass}>
+              Volume{' '}
+              <span className="font-normal text-neutral-600">
+                ({Math.round(musicPrefs.volume * 100)}%)
+              </span>
+            </label>
+            <input
+              id="pomo-music-vol"
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(musicPrefs.volume * 100)}
+              onChange={(e) => patchMusicPrefs({ volume: Number(e.target.value) / 100 })}
+              className="mt-2 h-2 w-full cursor-pointer appearance-none rounded-full bg-nexus-ink/80 accent-nexus-accent"
+            />
+          </div>
+          <p className="font-mono text-[10px] leading-relaxed text-neutral-600">
+            Tip: use an HTTPS link your browser can play (MP3, AAC, or Icecast). Some hosts block embedding — try
+            another URL or a file you host yourself.
+          </p>
+        </div>
+        <audio ref={audioRef} className="hidden" playsInline preload="none" />
       </Card>
 
       <Card glass className="relative flex flex-col overflow-hidden p-6 sm:p-8">

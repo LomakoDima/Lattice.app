@@ -8,8 +8,9 @@ export function errorHandler(
   _next: NextFunction
 ): void {
   if (err instanceof ZodError) {
+    const first = err.issues[0];
     res.status(400).json({
-      error: 'Validation failed',
+      error: first ? first.message : 'Validation failed',
       details: err.flatten(),
     });
     return;

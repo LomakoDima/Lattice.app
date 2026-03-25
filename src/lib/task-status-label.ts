@@ -6,7 +6,7 @@ type TaskStatus = Database['public']['Tables']['tasks']['Row']['status'];
 export function taskStatusLabel(status: TaskStatus): string {
   const map: Record<TaskStatus, string> = {
     pending: 'Queued',
-    running: 'In progress',
+    running: 'Running',
     completed: 'Completed',
     failed: 'Failed',
     waiting_approval: 'Awaiting approval',

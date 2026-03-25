@@ -61,9 +61,11 @@ export function TaskList() {
     searchQuery.trim() !== '' || statusFilter !== 'all' || categoryFilter !== 'all';
 
   const stats = useMemo(() => {
-    const running = tasks.filter((t) => t.status === 'running').length;
+    const open = tasks.filter((t) =>
+      ['pending', 'running', 'waiting_approval'].includes(t.status),
+    ).length;
     const done = tasks.filter((t) => t.status === 'completed').length;
-    return { total: tasks.length, running, done, showing: filteredTasks.length };
+    return { total: tasks.length, open, done, showing: filteredTasks.length };
   }, [tasks, filteredTasks.length]);
 
   const clearFilters = () => {
@@ -125,8 +127,8 @@ export function TaskList() {
             <span className="tabular-nums text-neutral-300">{stats.total}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-nexus-accent/25 bg-nexus-accent/[0.07] px-2.5 py-1 font-mono text-[11px] text-nexus-accent">
-            <span className="text-nexus-accent/75">In progress</span>
-            <span className="tabular-nums">{stats.running}</span>
+            <span className="text-nexus-accent/75">Open</span>
+            <span className="tabular-nums">{stats.open}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/[0.06] px-2.5 py-1 font-mono text-[11px] text-emerald-400/90">
             <span className="text-emerald-500/70">Done</span>
@@ -178,7 +180,7 @@ export function TaskList() {
             >
               <option value="all">All statuses</option>
               <option value="pending">Queued</option>
-              <option value="running">In progress</option>
+              <option value="running">Running</option>
               <option value="waiting_approval">Awaiting approval</option>
               <option value="completed">Completed</option>
               <option value="failed">Failed</option>

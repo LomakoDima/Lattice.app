@@ -127,7 +127,7 @@ export function Dashboard() {
             ) : null}
           </h1>
           <p className="text-sm text-neutral-500">
-            {activeTaskCount} in progress · {stats.total} tasks · {goalCountDisplay} active goals · {stats.completed}{' '}
+            {activeTaskCount} open · {stats.total} tasks · {goalCountDisplay} active goals · {stats.completed}{' '}
             completed
           </p>
         </div>
@@ -148,7 +148,7 @@ export function Dashboard() {
         {(
           [
             { label: 'Total tasks', value: stats.total, accent: false },
-            { label: 'In progress', value: activeTaskCount, accent: false },
+            { label: 'Open', value: activeTaskCount, accent: false },
             { label: 'Active goals', value: goalCountDisplay, accent: true },
             { label: 'Completed', value: stats.completed, accent: false },
           ] as const

@@ -6,7 +6,7 @@ import { CategoryChips } from '../ui/CategoryChips';
 import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { makeGoalRow, upsertGoal } from '../../lib/localWorkspace';
-import { DEFAULT_CATEGORY, type LatticeCategoryId } from '../../constants/categories';
+import { DEFAULT_CATEGORY } from '../../constants/categories';
 
 const inputClass =
   'w-full rounded-xl border border-white/[0.08] bg-nexus-void/90 px-4 py-3 text-[15px] text-white placeholder:text-neutral-600 transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50';
@@ -19,7 +19,7 @@ export function CreateGoal() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [targetDate, setTargetDate] = useState('');
-  const [category, setCategory] = useState(DEFAULT_CATEGORY);
+  const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
@@ -103,7 +103,7 @@ export function CreateGoal() {
               </span>
               <CategoryChips
                 value={category}
-                onChange={(id) => setCategory(id as LatticeCategoryId)}
+                onChange={setCategory}
                 labelledBy="goal-category-label"
                 className="mt-2"
               />

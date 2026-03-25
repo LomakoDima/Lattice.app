@@ -7,7 +7,7 @@ import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { listGoals, makeTaskRow, upsertTask } from '../../lib/localWorkspace';
 import { Database } from '../../types/database';
-import { DEFAULT_CATEGORY, type LatticeCategoryId } from '../../constants/categories';
+import { DEFAULT_CATEGORY } from '../../constants/categories';
 
 type GoalRow = Pick<Database['public']['Tables']['goals']['Row'], 'id' | 'title'>;
 
@@ -26,7 +26,7 @@ export function CreateTask() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [goalId, setGoalId] = useState<string>('');
-  const [category, setCategory] = useState(DEFAULT_CATEGORY);
+  const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
   const [goals, setGoals] = useState<GoalRow[]>([]);
   const [deadline, setDeadline] = useState('');
   const [creating, setCreating] = useState(false);
@@ -141,7 +141,7 @@ export function CreateTask() {
                   </span>
                   <CategoryChips
                     value={category}
-                    onChange={(id) => setCategory(id as LatticeCategoryId)}
+                    onChange={setCategory}
                     labelledBy="task-category-label"
                     className="mt-2"
                   />

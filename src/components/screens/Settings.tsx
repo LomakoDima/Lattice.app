@@ -1,5 +1,19 @@
 import { useCallback, useEffect, useId, useState } from 'react';
-import { Bell, BellOff, Copy, KeyRound, Loader2, LogOut, Palette, Shield, Sparkles, UserRound } from 'lucide-react';
+import {
+  Bell,
+  BellOff,
+  Copy,
+  KeyRound,
+  Loader2,
+  LogOut,
+  Palette,
+  Plus,
+  Shield,
+  Sparkles,
+  Tags,
+  Trash2,
+  UserRound,
+} from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -13,6 +27,13 @@ import {
   showTestFocusNotification,
 } from '../../lib/focusNotifications';
 import { apiFetch } from '../../lib/api';
+import {
+  addCustomCategory,
+  LATTICE_CATEGORIES_CHANGED,
+  loadCustomCategories,
+  removeCustomCategory,
+  type CategoryOption,
+} from '../../constants/categories';
 
 function displayNameFromUser(u: LocalUser | null): string {
   if (!u) return '—';
@@ -96,6 +117,9 @@ export function Settings() {
   );
   const [focusNotifHint, setFocusNotifHint] = useState('');
   const [notifBusy, setNotifBusy] = useState(false);
+  const [customCategories, setCustomCategories] = useState<CategoryOption[]>(() => loadCustomCategories());
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [categoryMsg, setCategoryMsg] = useState('');
 
   const refreshNotifPerm = useCallback(() => {
     setNotifPerm(getFocusNotificationPermission());
@@ -109,6 +133,12 @@ export function Settings() {
     document.addEventListener('visibilitychange', onVis);
     return () => document.removeEventListener('visibilitychange', onVis);
   }, [refreshNotifPerm]);
+
+  useEffect(() => {
+    const sync = () => setCustomCategories(loadCustomCategories());
+    window.addEventListener(LATTICE_CATEGORIES_CHANGED, sync);
+    return () => window.removeEventListener(LATTICE_CATEGORIES_CHANGED, sync);
+  }, []);
 
   const startTotpSetup = async () => {
     setTwoFaMsg('');
@@ -262,6 +292,16 @@ export function Settings() {
     } finally {
       setNotifBusy(false);
     }
+  };
+
+  const handleAddCustomCategory = () => {
+    setCategoryMsg('');
+    const result = addCustomCategory(newCategoryName);
+    if (!result.ok) {
+      setCategoryMsg(result.reason);
+      return;
+    }
+    setNewCategoryName('');
   };
 
   const chromeUnblockSteps = (
@@ -517,6 +557,86 @@ export function Settings() {
                 Lime accent on charcoal — matches Overview cards and sidebar.
               </p>
             </div>
+          </div>
+        </Card>
+
+        {/* Custom categories */}
+        <Card glass className="relative overflow-hidden p-6 lg:col-span-7 lg:p-8">
+          <div className="pointer-events-none absolute right-0 top-8 h-24 w-24 rounded-full bg-violet-500/[0.06] blur-2xl" />
+          <div className="relative border-b border-white/[0.06] pb-4">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-nexus-accent/90">Workspace</p>
+            <div className="mt-2 flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-white/[0.08] bg-nexus-void/60">
+                <Tags className="h-[18px] w-[18px] text-violet-300/90" strokeWidth={1.75} />
+              </span>
+              <div>
+                <h2 className="font-display text-lg font-semibold text-white">Your categories</h2>
+                <p className="mt-1 text-xs text-neutral-500">
+                  Extra labels for tasks and goals appear as chips everywhere. Stored in this browser only.
+                </p>
+              </div>
+            </div>
+          </div>
+          <div className="relative mt-4 space-y-4">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-end">
+              <div className="min-w-0 flex-1 space-y-1.5">
+                <label htmlFor={`${baseId}-new-cat`} className="font-mono text-[10px] uppercase text-neutral-500">
+                  New category
+                </label>
+                <input
+                  id={`${baseId}-new-cat`}
+                  type="text"
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      handleAddCustomCategory();
+                    }
+                  }}
+                  placeholder="e.g. Side project"
+                  className="w-full rounded-lg border border-white/[0.08] bg-nexus-void/90 px-4 py-2.5 text-sm text-white placeholder:text-neutral-600"
+                  maxLength={48}
+                />
+              </div>
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="shrink-0 gap-2 rounded-lg px-4"
+                onClick={handleAddCustomCategory}
+              >
+                <Plus className="h-4 w-4" strokeWidth={2} />
+                Add
+              </Button>
+            </div>
+            {categoryMsg ? (
+              <p className="rounded-lg border border-amber-500/25 bg-amber-500/[0.06] px-3 py-2 text-xs text-amber-200/95">
+                {categoryMsg}
+              </p>
+            ) : null}
+            {customCategories.length === 0 ? (
+              <p className="text-xs text-neutral-600">No custom categories yet — add one above.</p>
+            ) : (
+              <ul className="space-y-2">
+                {customCategories.map((c) => (
+                  <li
+                    key={c.id}
+                    className="flex items-center justify-between gap-3 rounded-lg border border-white/[0.06] bg-nexus-void/40 px-3 py-2.5"
+                  >
+                    <span className="min-w-0 truncate text-[13px] text-neutral-200">{c.label}</span>
+                    <button
+                      type="button"
+                      aria-label={`Remove category ${c.label}`}
+                      className="shrink-0 rounded-lg p-1.5 text-neutral-500 transition hover:bg-red-500/15 hover:text-red-300"
+                      onClick={() => removeCustomCategory(c.id)}
+                    >
+                      <Trash2 className="h-4 w-4" strokeWidth={1.75} />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </Card>
 

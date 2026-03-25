@@ -168,11 +168,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ email, password }),
     });
+    const payload = (await res.json().catch(() => ({}))) as {
+      error?: string;
+      details?: { fieldErrors?: Record<string, string[]>; formErrors?: string[] };
+    };
     if (!res.ok) {
-      const err = (await res.json().catch(() => ({}))) as { error?: string };
-      throw new Error(err.error ?? 'Registration failed');
+      const fieldMsg = payload.details?.fieldErrors
+        ? Object.values(payload.details.fieldErrors).flat().find(Boolean)
+        : undefined;
+      const formMsg = payload.details?.formErrors?.[0];
+      throw new Error(fieldMsg ?? formMsg ?? payload.error ?? 'Registration failed');
     }
-    const data = (await res.json()) as { user: ApiUser };
+    const data = payload as { user: ApiUser };
     setUser(mapUser(data.user));
   };
 

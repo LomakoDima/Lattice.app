@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
-export const categorySchema = z.enum(['work', 'personal', 'health', 'learning', 'finance', 'other']);
+/** Allows built-in ids and client-defined custom category slugs (local storage). */
+export const categorySchema = z.string().min(1).max(80);
 
 export const createGoalSchema = z.object({
   title: z.string().min(1).max(500),
