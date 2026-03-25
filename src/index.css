@@ -25,3 +25,97 @@
     scroll-behavior: auto !important;
   }
 }
+
+/* Celebration overlay — single hero pop + soft breathe (Duolingo-adjacent restraint) */
+@keyframes lattice-celebrate-hero {
+  0% {
+    transform: scale(0);
+    opacity: 0;
+  }
+  52% {
+    transform: scale(1.08);
+    opacity: 1;
+  }
+  72% {
+    transform: scale(0.94);
+  }
+  88% {
+    transform: scale(1.02);
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes lattice-celebrate-breathe {
+  0%,
+  100% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.055);
+  }
+}
+
+@keyframes lattice-celebrate-bloom {
+  0%,
+  100% {
+    opacity: 0.55;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.82;
+    transform: scale(1.07);
+  }
+}
+
+@keyframes lattice-celebrate-fade-up {
+  0% {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.lattice-celebrate-hero-wrap {
+  animation: lattice-celebrate-hero 0.68s cubic-bezier(0.34, 1.3, 0.64, 1) forwards;
+}
+
+.lattice-celebrate-hero-inner {
+  transform: translateZ(0);
+}
+
+.lattice-celebrate-breathe {
+  animation: lattice-celebrate-breathe 2.4s ease-in-out infinite;
+  animation-delay: 0.7s;
+}
+
+.lattice-celebrate-bloom {
+  animation: lattice-celebrate-bloom 3.2s ease-in-out infinite;
+  animation-delay: 0.5s;
+}
+
+.lattice-celebrate-line {
+  animation: lattice-celebrate-fade-up 0.45s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+html.lattice-reduce-motion .lattice-celebrate-hero-wrap {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}
+
+html.lattice-reduce-motion .lattice-celebrate-breathe,
+html.lattice-reduce-motion .lattice-celebrate-bloom {
+  animation: none;
+}
+
+html.lattice-reduce-motion .lattice-celebrate-line {
+  animation: none;
+  opacity: 1;
+  transform: none;
+}

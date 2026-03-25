@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { Search, Clock, Circle, CheckCircle2, Plus, Sparkles, Target, Trash2 } from 'lucide-react';
+import { Search, Clock, Circle, CheckCircle2, Plus, Sparkles, Target, Trash2, AlertTriangle } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
 import { CategoryChips } from '../ui/CategoryChips';
@@ -10,7 +10,12 @@ import { useToast } from '../../contexts/ToastContext';
 import { deleteTask, listTasks, upsertTask } from '../../lib/localWorkspace';
 import { Database } from '../../types/database';
 import { getCategoryLabel } from '../../constants/categories';
-import { formatTaskDeadlineLine } from '../../lib/formatDeadline';
+import {
+  compareTasksBySchedule,
+  formatTaskDeadlineLine,
+  getTaskDeadlineTimeBucket,
+  isOpenTaskOverdue,
+} from '../../lib/formatDeadline';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 
@@ -18,7 +23,7 @@ const searchInputClass =
   'w-full rounded-lg border border-white/[0.08] bg-nexus-void/90 py-2.5 pl-10 pr-3 text-[14px] text-white placeholder:text-neutral-600 transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50';
 
 const filterSelectClass =
-  'min-w-[130px] flex-1 rounded-lg border border-white/[0.08] bg-nexus-void/90 px-3 py-2.5 text-[13px] text-white transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50 sm:min-w-[140px] sm:flex-none cursor-pointer appearance-none bg-[length:0.875rem] bg-[right_0.65rem_center] bg-no-repeat pr-9 [color-scheme:dark]';
+  'w-full min-w-[130px] cursor-pointer appearance-none rounded-lg border border-white/[0.08] bg-nexus-void/90 bg-[length:0.875rem] bg-[right_0.65rem_center] bg-no-repeat px-3 py-2.5 pr-9 text-[13px] text-white transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50 [color-scheme:dark] sm:w-auto sm:min-w-[140px]';
 
 const chevronBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238a8a8f'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`;
 
@@ -36,6 +41,7 @@ export function TaskList() {
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
+  const [timeHorizon, setTimeHorizon] = useState<'all' | 'future' | 'today' | 'past'>('all');
 
   useEffect(() => {
     void loadTasks();
@@ -48,17 +54,32 @@ export function TaskList() {
     setLoading(false);
   };
 
-  const filteredTasks = tasks.filter((task) => {
-    const matchesSearch =
-      task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      task.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
-    const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter;
-    return matchesSearch && matchesStatus && matchesCategory;
-  });
+  const filteredTasks = useMemo(() => {
+    return tasks.filter((task) => {
+      const matchesSearch =
+        task.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        task.description.toLowerCase().includes(searchQuery.toLowerCase());
+      const matchesStatus = statusFilter === 'all' || task.status === statusFilter;
+      const matchesCategory = categoryFilter === 'all' || task.category === categoryFilter;
+      const bucket = getTaskDeadlineTimeBucket(task.deadline);
+      const matchesTime =
+        timeHorizon === 'all' ||
+        (timeHorizon === 'future' && bucket === 'future') ||
+        (timeHorizon === 'today' && bucket === 'today') ||
+        (timeHorizon === 'past' && bucket === 'past');
+      return matchesSearch && matchesStatus && matchesCategory && matchesTime;
+    });
+  }, [tasks, searchQuery, statusFilter, categoryFilter, timeHorizon]);
+
+  const displayTasks = useMemo(() => {
+    return [...filteredTasks].sort(compareTasksBySchedule);
+  }, [filteredTasks]);
 
   const hasActiveFilters =
-    searchQuery.trim() !== '' || statusFilter !== 'all' || categoryFilter !== 'all';
+    searchQuery.trim() !== '' ||
+    statusFilter !== 'all' ||
+    categoryFilter !== 'all' ||
+    timeHorizon !== 'all';
 
   const stats = useMemo(() => {
     const open = tasks.filter((t) =>
@@ -68,10 +89,24 @@ export function TaskList() {
     return { total: tasks.length, open, done, showing: filteredTasks.length };
   }, [tasks, filteredTasks.length]);
 
+  const horizonCounts = useMemo(() => {
+    let future = 0;
+    let today = 0;
+    let past = 0;
+    for (const task of tasks) {
+      const b = getTaskDeadlineTimeBucket(task.deadline);
+      if (b === 'future') future += 1;
+      else if (b === 'today') today += 1;
+      else if (b === 'past') past += 1;
+    }
+    return { future, today, past };
+  }, [tasks]);
+
   const clearFilters = () => {
     setSearchQuery('');
     setStatusFilter('all');
     setCategoryFilter('all');
+    setTimeHorizon('all');
   };
 
   const toggleTaskDone = (task: Task) => {
@@ -146,7 +181,42 @@ export function TaskList() {
       </header>
 
       <Card glass className="relative overflow-hidden p-3 sm:p-4">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
+              By deadline
+            </span>
+            <div className="flex min-w-0 flex-1 flex-wrap gap-1.5 sm:flex-initial">
+              {(['all', 'future', 'today', 'past'] as const).map((key) => {
+                const active = timeHorizon === key;
+                const count =
+                  key === 'all'
+                    ? tasks.length
+                    : key === 'future'
+                      ? horizonCounts.future
+                      : key === 'today'
+                        ? horizonCounts.today
+                        : horizonCounts.past;
+                const label =
+                  key === 'all' ? 'All' : key === 'future' ? 'Future' : key === 'today' ? 'Today' : 'Past';
+                return (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setTimeHorizon(key)}
+                    className={`rounded-lg border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition ${
+                      active
+                        ? 'border-nexus-accent/45 bg-nexus-accent/15 text-nexus-accent'
+                        : 'border-white/[0.08] bg-nexus-void/50 text-neutral-500 hover:border-white/[0.12] hover:text-neutral-300'
+                    }`}
+                  >
+                    {label}
+                    <span className="ml-1 tabular-nums text-neutral-600">{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600" />
             <input
@@ -159,8 +229,8 @@ export function TaskList() {
               aria-label="Search tasks"
             />
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:gap-3">
-            <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-5">
+            <div className="min-w-0 space-y-1.5">
               <p id="tasklist-category-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
                 Categories
               </p>
@@ -171,42 +241,52 @@ export function TaskList() {
                 labelledBy="tasklist-category-label"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className={filterSelectClass}
-              style={{ backgroundImage: chevronBg }}
-              aria-label="Filter by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="pending">Queued</option>
-              <option value="running">Running</option>
-              <option value="waiting_approval">Awaiting approval</option>
-              <option value="completed">Completed</option>
-              <option value="failed">Failed</option>
-              <option value="cancelled">Cancelled</option>
-            </select>
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <p className="font-mono text-[10px] text-neutral-600">
-                <span className="text-neutral-400">{stats.showing}</span>
-                <span className="text-neutral-600"> / </span>
-                {stats.total}
+            <div className="min-w-0 space-y-1.5 sm:max-w-[min(100%,18rem)] sm:justify-self-end">
+              <p id="tasklist-status-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
+                Status
               </p>
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent"
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className={filterSelectClass}
+                  style={{ backgroundImage: chevronBg }}
+                  aria-labelledby="tasklist-status-label"
                 >
-                  Clear
-                </button>
-              ) : null}
+                  <option value="all">All statuses</option>
+                  <option value="pending">Queued</option>
+                  <option value="running">Running</option>
+                  <option value="waiting_approval">Awaiting approval</option>
+                  <option value="completed">Completed</option>
+                  <option value="failed">Failed</option>
+                  <option value="cancelled">Cancelled</option>
+                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="font-mono text-[10px] text-neutral-500"
+                    aria-label={`${stats.showing} of ${stats.total} tasks match filters`}
+                  >
+                    <span className="tabular-nums text-neutral-300">{stats.showing}</span>
+                    <span className="text-neutral-600"> of </span>
+                    <span className="tabular-nums text-neutral-500">{stats.total}</span>
+                  </span>
+                  {hasActiveFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </Card>
 
-      {filteredTasks.length === 0 ? (
+      {displayTasks.length === 0 ? (
         <Card glass className="relative overflow-hidden px-5 py-12 text-center sm:px-8 sm:py-14">
           <div className="relative mx-auto max-w-sm">
             <div className="mx-auto mb-4 flex h-11 w-11 items-center justify-center rounded-xl border border-white/[0.08] bg-nexus-void/80">
@@ -235,10 +315,11 @@ export function TaskList() {
         </Card>
       ) : (
         <div className="grid gap-3">
-          {filteredTasks.map((task) => {
+          {displayTasks.map((task) => {
             const done = task.status === 'completed';
             const schedule = formatTaskDeadlineLine(task.deadline ?? task.created_at);
             const showPriorityDot = priorityDot(task);
+            const overdue = isOpenTaskOverdue(task);
 
             return (
               <Card
@@ -281,8 +362,18 @@ export function TaskList() {
                       <span className="rounded-full border border-violet-500/40 bg-violet-950/50 px-2 py-0.5 text-[11px] font-medium text-violet-200">
                         {getCategoryLabel(task.category)}
                       </span>
+                      {overdue ? (
+                        <span className="inline-flex items-center gap-1 rounded-md border border-red-500/45 bg-red-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-red-300">
+                          <AlertTriangle className="h-3 w-3" strokeWidth={2} />
+                          Overdue
+                        </span>
+                      ) : null}
                       {schedule ? (
-                        <span className="inline-flex items-center gap-1 font-mono text-[11px] text-neutral-500">
+                        <span
+                          className={`inline-flex items-center gap-1 font-mono text-[11px] ${
+                            overdue ? 'text-red-300/90' : 'text-neutral-500'
+                          }`}
+                        >
                           <Clock className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />
                           {schedule}
                         </span>

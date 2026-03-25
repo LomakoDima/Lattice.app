@@ -1,5 +1,12 @@
 const STORAGE_KEY = 'nexus-pomodoro-music-v1';
 
+/**
+ * Direct MP3 that plays in most browsers (SoundHelix demo). Use for testing focus music.
+ * @see https://www.soundhelix.com/examples
+ */
+export const POMODORO_DEMO_MP3_URL =
+  'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3';
+
 export type PomodoroMusicPrefs = {
   /** Direct URL to an audio stream or file (e.g. MP3). Empty = disabled. */
   url: string;

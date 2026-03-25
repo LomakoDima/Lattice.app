@@ -7,7 +7,13 @@ import { useNavigation } from '../../contexts/NavigationContext';
 import { showFocusSessionEndNotification } from '../../lib/focusNotifications';
 import { listGoals, listTasks } from '../../lib/localWorkspace';
 import { Database } from '../../types/database';
-import { loadPomodoroMusicPrefs, savePomodoroMusicPrefs, type PomodoroMusicPrefs } from '../../lib/pomodoroMusic';
+import {
+  loadPomodoroMusicPrefs,
+  POMODORO_DEMO_MP3_URL,
+  savePomodoroMusicPrefs,
+  type PomodoroMusicPrefs,
+} from '../../lib/pomodoroMusic';
+import { Button } from '../ui/Button';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
 type GoalPick = { id: string; title: string };
@@ -170,6 +176,7 @@ export function Pomodoro() {
     if (a.dataset.latticeSrc !== url) {
       a.dataset.latticeSrc = url;
       a.src = url;
+      a.load();
     }
     a.volume = musicPrefs.volume;
   }, [musicPrefs.url, musicPrefs.volume]);
@@ -355,8 +362,9 @@ export function Pomodoro() {
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-nexus-accent/90">Optional</p>
             <h2 className="font-display mt-1 text-lg font-semibold text-white">Focus music</h2>
             <p className="mt-1 text-xs text-neutral-500">
-              Paste a direct link to an audio file or stream. Plays only during <span className="text-neutral-400">work</span>{' '}
-              while the timer is running — pauses on break or pause.
+              Paste a <strong className="font-medium text-neutral-400">direct HTTPS link to an audio file</strong> (MP3, AAC,
+              OGG). Playback starts only during <span className="text-neutral-400">work</span> when the timer is running.
+              Press <span className="text-neutral-400">Start</span> once after pasting a URL so the browser allows audio.
             </p>
           </div>
         </div>
@@ -371,10 +379,25 @@ export function Pomodoro() {
               inputMode="url"
               value={musicPrefs.url}
               onChange={(e) => patchMusicPrefs({ url: e.target.value })}
-              placeholder="https://…/focus.mp3"
+              placeholder="https://example.com/track.mp3"
               className={inputClass}
               autoComplete="off"
             />
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                size="sm"
+                className="font-mono text-[10px] uppercase tracking-[0.1em]"
+                onClick={() => patchMusicPrefs({ url: POMODORO_DEMO_MP3_URL })}
+              >
+                Use sample MP3
+              </Button>
+            </div>
+            <p className="mt-2 rounded-lg border border-white/[0.06] bg-nexus-void/50 p-2 font-mono text-[10px] leading-relaxed text-neutral-500 break-all">
+              Example (works in most browsers):{' '}
+              <span className="text-neutral-400">{POMODORO_DEMO_MP3_URL}</span>
+            </p>
           </div>
           <div>
             <label htmlFor="pomo-music-vol" className={labelClass}>
@@ -394,11 +417,11 @@ export function Pomodoro() {
             />
           </div>
           <p className="font-mono text-[10px] leading-relaxed text-neutral-600">
-            Tip: use an HTTPS link your browser can play (MP3, AAC, or Icecast). Some hosts block embedding — try
-            another URL or a file you host yourself.
+            Many streaming pages (Spotify, YouTube) are not direct file URLs — the player needs a link that ends in or serves
+            a single media file (or your own hosted MP3).
           </p>
         </div>
-        <audio ref={audioRef} className="hidden" playsInline preload="none" />
+        <audio ref={audioRef} className="hidden" playsInline preload="auto" />
       </Card>
 
       <Card glass className="relative flex flex-col overflow-hidden p-6 sm:p-8">

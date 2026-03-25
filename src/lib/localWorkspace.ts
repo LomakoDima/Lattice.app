@@ -1,4 +1,5 @@
 import type { Database } from '../types/database';
+import { notifyWorkspaceChanged } from './workspaceEvents';
 
 type TaskRow = Database['public']['Tables']['tasks']['Row'];
 type GoalRow = Database['public']['Tables']['goals']['Row'];
@@ -98,6 +99,7 @@ export function upsertTask(userId: string, task: TaskRow) {
   const without = prev.filter((t) => t.id !== task.id);
   map[userId] = [task, ...without];
   writeMap(TASKS_KEY, map);
+  notifyWorkspaceChanged();
 }
 
 export function deleteTask(userId: string, taskId: string) {
@@ -105,6 +107,7 @@ export function deleteTask(userId: string, taskId: string) {
   const prev = map[userId] ?? [];
   map[userId] = prev.filter((t) => t.id !== taskId);
   writeMap(TASKS_KEY, map);
+  notifyWorkspaceChanged();
 }
 
 export function upsertGoal(userId: string, goal: GoalRow) {
@@ -113,6 +116,7 @@ export function upsertGoal(userId: string, goal: GoalRow) {
   const without = prev.filter((g) => g.id !== goal.id);
   map[userId] = [goal, ...without];
   writeMap(GOALS_KEY, map);
+  notifyWorkspaceChanged();
 }
 
 /** Removes the goal and unlinks tasks (goal_id → null). */
@@ -129,6 +133,7 @@ export function deleteGoal(userId: string, goalId: string) {
   );
   tMap[userId] = tasks;
   writeMap(TASKS_KEY, tMap);
+  notifyWorkspaceChanged();
 }
 
 export function makeTaskRow(input: {

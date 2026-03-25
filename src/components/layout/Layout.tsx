@@ -2,6 +2,7 @@ import { type CSSProperties, type ReactNode, useEffect, useState } from 'react';
 import { Menu } from 'lucide-react';
 import { Sidebar } from './Sidebar';
 import { SiteStatusNotice } from './SiteStatusNotice';
+import { WorkspaceCelebration } from '../WorkspaceCelebration';
 import { useNavigation, type Screen } from '../../contexts/NavigationContext';
 
 interface LayoutProps {
@@ -115,6 +116,7 @@ export function Layout({ children }: LayoutProps) {
           </div>
         </main>
       </div>
+      <WorkspaceCelebration />
       <SiteStatusNotice />
     </div>
   );

@@ -11,7 +11,7 @@ import { getGreetingForHour, getGreetingName } from '../../lib/greeting';
 import { listGoals, listTasks } from '../../lib/localWorkspace';
 import { Database } from '../../types/database';
 import { getCategoryLabel } from '../../constants/categories';
-import { formatTaskDeadline } from '../../lib/formatDeadline';
+import { formatTaskDeadline, isOpenTaskOverdue } from '../../lib/formatDeadline';
 import { taskStatusLabel } from '../../lib/task-status-label';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
@@ -288,8 +288,17 @@ export function Dashboard() {
                     <h3 className="line-clamp-2 font-medium leading-snug text-white">{task.title}</h3>
                     <p className="mt-1 font-mono text-[10px] text-neutral-500">{getCategoryLabel(task.category)}</p>
                     {task.deadline && formatTaskDeadline(task.deadline) ? (
-                      <p className="mt-0.5 font-mono text-[10px] text-amber-500/90">
-                        Due {formatTaskDeadline(task.deadline)}
+                      <p
+                        className={`mt-0.5 flex flex-wrap items-center gap-2 font-mono text-[10px] ${
+                          isOpenTaskOverdue(task) ? 'text-red-400' : 'text-amber-500/90'
+                        }`}
+                      >
+                        {isOpenTaskOverdue(task) ? (
+                          <span className="rounded border border-red-500/40 bg-red-500/15 px-1.5 py-px text-[9px] font-semibold uppercase tracking-wide text-red-300">
+                            Overdue
+                          </span>
+                        ) : null}
+                        <span>Due {formatTaskDeadline(task.deadline)}</span>
                       </p>
                     ) : null}
                   </div>

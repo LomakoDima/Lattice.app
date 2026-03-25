@@ -29,7 +29,7 @@ const searchInputClass =
   'w-full rounded-lg border border-white/[0.08] bg-nexus-void/90 py-2.5 pl-10 pr-3 text-[14px] text-white placeholder:text-neutral-600 transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50';
 
 const filterSelectClass =
-  'min-w-[130px] flex-1 rounded-lg border border-white/[0.08] bg-nexus-void/90 px-3 py-2.5 text-[13px] text-white transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50 sm:min-w-[140px] sm:flex-none cursor-pointer appearance-none bg-[length:0.875rem] bg-[right_0.65rem_center] bg-no-repeat pr-9 [color-scheme:dark]';
+  'w-full min-w-[130px] cursor-pointer appearance-none rounded-lg border border-white/[0.08] bg-nexus-void/90 bg-[length:0.875rem] bg-[right_0.65rem_center] bg-no-repeat px-3 py-2.5 pr-9 text-[13px] text-white transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50 [color-scheme:dark] sm:w-auto sm:min-w-[140px]';
 
 const chevronBg = `url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 24 24' stroke='%238a8a8f'%3E%3Cpath stroke-linecap='round' stroke-linejoin='round' stroke-width='2' d='M19 9l-7 7-7-7'/%3E%3C/svg%3E")`;
 
@@ -211,7 +211,7 @@ export function GoalList() {
       </header>
 
       <Card glass className="relative overflow-hidden p-3 sm:p-4">
-        <div className="flex flex-col gap-3">
+        <div className="flex flex-col gap-2">
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600" />
             <input
@@ -224,8 +224,8 @@ export function GoalList() {
               aria-label="Search goals"
             />
           </div>
-          <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:gap-3">
-            <div className="min-w-0 flex-1 space-y-1.5">
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-5">
+            <div className="min-w-0 space-y-1.5">
               <p id="goallist-category-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
                 Categories
               </p>
@@ -236,33 +236,43 @@ export function GoalList() {
                 labelledBy="goallist-category-label"
               />
             </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className={filterSelectClass}
-              style={{ backgroundImage: chevronBg }}
-              aria-label="Filter by status"
-            >
-              <option value="all">All statuses</option>
-              <option value="active">Active</option>
-              <option value="completed">Completed</option>
-              <option value="archived">Archived</option>
-            </select>
-            <div className="flex flex-wrap items-center gap-2 sm:ml-auto">
-              <p className="font-mono text-[10px] text-neutral-600">
-                <span className="text-neutral-400">{stats.showing}</span>
-                <span className="text-neutral-600"> / </span>
-                {stats.total}
+            <div className="min-w-0 space-y-1.5 sm:max-w-[min(100%,18rem)] sm:justify-self-end">
+              <p id="goallist-status-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
+                Status
               </p>
-              {hasActiveFilters ? (
-                <button
-                  type="button"
-                  onClick={clearFilters}
-                  className="font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent"
+              <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
+                <select
+                  value={statusFilter}
+                  onChange={(e) => setStatusFilter(e.target.value)}
+                  className={filterSelectClass}
+                  style={{ backgroundImage: chevronBg }}
+                  aria-labelledby="goallist-status-label"
                 >
-                  Clear
-                </button>
-              ) : null}
+                  <option value="all">All statuses</option>
+                  <option value="active">Active</option>
+                  <option value="completed">Completed</option>
+                  <option value="archived">Archived</option>
+                </select>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span
+                    className="font-mono text-[10px] text-neutral-500"
+                    aria-label={`${stats.showing} of ${stats.total} goals match filters`}
+                  >
+                    <span className="tabular-nums text-neutral-300">{stats.showing}</span>
+                    <span className="text-neutral-600"> of </span>
+                    <span className="tabular-nums text-neutral-500">{stats.total}</span>
+                  </span>
+                  {hasActiveFilters ? (
+                    <button
+                      type="button"
+                      onClick={clearFilters}
+                      className="shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent"
+                    >
+                      Clear
+                    </button>
+                  ) : null}
+                </div>
+              </div>
             </div>
           </div>
         </div>
