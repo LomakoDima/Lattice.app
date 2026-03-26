@@ -5,7 +5,11 @@ import { getGreetingName } from '../lib/greeting';
 import { listGoals, listTasks } from '../lib/localWorkspace';
 import { WORKSPACE_CHANGED } from '../lib/workspaceEvents';
 
-const DISMISS_KEY = 'lattice-celebration-dismissed-session';
+const DISMISS_PREFIX = 'lattice-celebration-dismissed-session';
+
+function dismissStorageKey(userId: string) {
+  return `${DISMISS_PREFIX}:${userId}`;
+}
 
 const OPEN_TASK = new Set(['pending', 'running', 'waiting_approval']);
 
@@ -31,7 +35,7 @@ export function WorkspaceCelebration() {
     const done = isFullyWrappedUp(uid);
     if (!done) {
       try {
-        sessionStorage.removeItem(DISMISS_KEY);
+        sessionStorage.removeItem(dismissStorageKey(uid));
       } catch {
         /* ignore */
       }
@@ -39,7 +43,7 @@ export function WorkspaceCelebration() {
       return;
     }
     try {
-      if (sessionStorage.getItem(DISMISS_KEY) === '1') {
+      if (sessionStorage.getItem(dismissStorageKey(uid)) === '1') {
         setVisible(false);
         return;
       }
@@ -60,10 +64,13 @@ export function WorkspaceCelebration() {
   }, [sync]);
 
   const dismiss = () => {
-    try {
-      sessionStorage.setItem(DISMISS_KEY, '1');
-    } catch {
-      /* ignore */
+    const uid = user?.id;
+    if (uid) {
+      try {
+        sessionStorage.setItem(dismissStorageKey(uid), '1');
+      } catch {
+        /* ignore */
+      }
     }
     setVisible(false);
   };

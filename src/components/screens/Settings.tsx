@@ -24,7 +24,6 @@ import {
   focusNotificationsSupported,
   getFocusNotificationPermission,
   requestFocusNotificationPermission,
-  showTestFocusNotification,
 } from '../../lib/focusNotifications';
 import { apiFetch } from '../../lib/api';
 import {
@@ -254,7 +253,7 @@ export function Settings() {
       setFocusNotifHint('Browser now allows notifications. Turn on focus reminders above.');
     } else if (p === 'denied') {
       setFocusNotifHint(
-        'Still blocked. In Chrome: click the icon left of the address bar, then Allow for this site (Разрешить для этого сайта).',
+        'Still blocked. In Chrome: click the icon left of the address bar, then Allow for this site.',
       );
     }
   };
@@ -312,7 +311,7 @@ export function Settings() {
           <p className="text-[13px] font-medium text-neutral-200">Unblock in Chrome</p>
           <p className="text-xs leading-relaxed text-neutral-500">
             When notifications are blocked, the page cannot show the permission prompt again. Change it in Chrome’s
-            site controls — the same panel as “Notifications blocked” / «Уведомления заблокированы» next to the URL.
+            site controls — the same panel as “Notifications blocked” next to the URL.
           </p>
           <ol className="list-decimal space-y-1.5 pl-4 text-xs leading-relaxed text-neutral-400">
             <li>
@@ -320,9 +319,7 @@ export function Settings() {
               blocked bell).
             </li>
             <li>
-              Under Notifications, choose{' '}
-              <span className="text-neutral-200">Allow for this site</span> — in Russian: «
-              <span lang="ru">Разрешить для этого сайта</span>».
+              Under Notifications, choose <span className="text-neutral-200">Allow for this site</span>.
             </li>
             <li>Come back here and use Check again so Lattice picks up the new permission.</li>
           </ol>
@@ -515,17 +512,6 @@ export function Settings() {
               >
                 {notifBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : null}
                 Allow in browser…
-              </Button>
-            ) : null}
-            {notifPerm === 'granted' ? (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="w-fit gap-2 rounded-lg px-3 py-1.5 text-xs"
-                onClick={() => showTestFocusNotification()}
-              >
-                Send test notification
               </Button>
             ) : null}
           </div>
