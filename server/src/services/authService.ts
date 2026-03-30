@@ -17,7 +17,10 @@ import {
   generateTotpSecret,
   normalizeTotpSecret,
   verifyTotpCode,
+  verifyTotpCodeOnce,
+  verifyTotpCodeOnceSetup,
 } from './twoFactorService.js';
+import { isTotpBlocked, recordTotpFailure, clearTotpFailures } from '../lib/totpBruteGuard.js';
 
 const strongPassword = z
   .string()
@@ -63,7 +66,7 @@ export async function register(input: unknown): Promise<AuthTokens> {
     const existing = await userService.findUserByEmail(client, data.email);
     if (existing) {
       await client.query('ROLLBACK');
-      const err = new Error('Email already registered');
+      const err = new Error('Invalid email or password');
       (err as Error & { status: number }).status = 409;
       throw err;
     }
@@ -108,7 +111,8 @@ export async function login(input: unknown): Promise<LoginOutcome> {
     const user = userService.rowToPublic(row);
     await client.query('BEGIN');
     try {
-      await revokeAllRefreshTokensForUser(client, user.id);
+      // Do NOT revoke all sessions here — saveRefreshToken enforces the
+      // session cap (MAX_SESSIONS) and evicts the oldest token automatically.
       const refreshToken = generateRefreshToken();
       await saveRefreshToken(client, user.id, refreshToken);
       const accessToken = signAccessToken(user);
@@ -139,14 +143,14 @@ export async function verifyTwoFactorLogin(userId: string, codeRaw: string): Pro
       (err as Error & { status: number }).status = 400;
       throw err;
     }
-    if (!verifyTotpCode(row.totp_secret, code)) {
+    if (!await verifyTotpCodeOnce(client, userId, row.totp_secret, code)) {
       await client.query('ROLLBACK');
       const err = new Error('Invalid authentication code');
       (err as Error & { status: number }).status = 401;
       throw err;
     }
     const user = userService.rowToPublic(row);
-    await revokeAllRefreshTokensForUser(client, user.id);
+    // Session cap enforced inside saveRefreshToken — no revokeAll needed.
     const refreshToken = generateRefreshToken();
     await saveRefreshToken(client, user.id, refreshToken);
     const accessToken = signAccessToken(user);
@@ -236,7 +240,7 @@ export async function loginOrRegisterOAuth(input: OAuthProfileInput): Promise<Au
         throw new Error('User missing');
       }
       const user = userService.rowToPublic(row);
-      await revokeAllRefreshTokensForUser(client, user.id);
+      // Session cap enforced inside saveRefreshToken.
       const refreshToken = generateRefreshToken();
       await saveRefreshToken(client, user.id, refreshToken);
       const accessToken = signAccessToken(user);
@@ -247,9 +251,7 @@ export async function loginOrRegisterOAuth(input: OAuthProfileInput): Promise<Au
     const existingByEmail = await userService.findUserByEmail(client, email);
     if (existingByEmail?.password_hash) {
       await client.query('ROLLBACK');
-      const err = new Error(
-        'An account with this email already uses password sign-in. Sign in with email and password first.'
-      );
+      const err = new Error('Sign in failed. Try a different method or check your credentials.');
       (err as Error & { status: number }).status = 409;
       (err as Error & { code: string }).code = 'OAUTH_EMAIL_PASSWORD_CONFLICT';
       throw err;
@@ -276,7 +278,7 @@ export async function loginOrRegisterOAuth(input: OAuthProfileInput): Promise<Au
         input.providerUserId
       );
     }
-    await revokeAllRefreshTokensForUser(client, user.id);
+    // Session cap enforced inside saveRefreshToken.
     const refreshToken = generateRefreshToken();
     await saveRefreshToken(client, user.id, refreshToken);
     const accessToken = signAccessToken(user);
@@ -314,7 +316,7 @@ export async function prepareTotpSetup(userId: string): Promise<{ secret: string
 
 export async function confirmTotpEnable(userId: string, input: unknown): Promise<PublicUser> {
   const { secret, code } = totpEnableSchema.parse(input);
-  if (!verifyTotpCode(secret, code)) {
+  if (!await verifyTotpCodeOnceSetup(userId, secret, code)) {
     const err = new Error('Invalid authentication code');
     (err as Error & { status: number }).status = 400;
     throw err;
@@ -359,7 +361,7 @@ export async function disableTotp(userId: string, input: unknown): Promise<Publi
       (err as Error & { status: number }).status = 400;
       throw err;
     }
-    if (!verifyTotpCode(row.totp_secret, code)) {
+    if (!await verifyTotpCodeOnce(client, userId, row.totp_secret, code)) {
       await client.query('ROLLBACK');
       const err = new Error('Invalid authentication code');
       (err as Error & { status: number }).status = 401;

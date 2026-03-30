@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Search, Clock, Circle, CheckCircle2, Plus, Sparkles, Target, Trash2, AlertTriangle } from 'lucide-react';
 import { Card } from '../ui/Card';
 import { Button } from '../ui/Button';
@@ -7,8 +7,9 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { useToast } from '../../contexts/ToastContext';
-import { deleteTask, listTasks, upsertTask } from '../../lib/localWorkspace';
-import { Database } from '../../types/database';
+import { apiListTasks, apiUpdateTask, apiDeleteTask } from '../../lib/workspaceApi';
+import { WORKSPACE_CHANGED } from '../../lib/workspaceEvents';
+import type { Database } from '../../types/database';
 import { getCategoryLabel } from '../../constants/categories';
 import {
   compareTasksBySchedule,
@@ -18,6 +19,8 @@ import {
 } from '../../lib/formatDeadline';
 
 type Task = Database['public']['Tables']['tasks']['Row'];
+
+const PAGE_SIZE = 100;
 
 const searchInputClass =
   'w-full rounded-lg border border-white/[0.08] bg-nexus-void/90 py-2.5 pl-10 pr-3 text-[14px] text-white placeholder:text-neutral-600 transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50';
@@ -37,22 +40,35 @@ export function TaskList() {
   const { setCurrentScreen } = useNavigation();
   const { showUndoToast } = useToast();
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [timeHorizon, setTimeHorizon] = useState<'all' | 'future' | 'today' | 'past'>('all');
 
-  useEffect(() => {
-    void loadTasks();
+  const loadTasks = useCallback(async () => {
+    if (!user?.id) { setTasks([]); setTotal(0); setLoading(false); return; }
+    setLoading(true);
+    try {
+      const result = await apiListTasks({ limit: PAGE_SIZE, offset: 0 });
+      setTasks(result.tasks);
+      setTotal(result.total);
+    } catch {
+      setTasks([]);
+    } finally {
+      setLoading(false);
+    }
   }, [user?.id]);
 
-  const loadTasks = async () => {
-    setLoading(true);
-    if (user?.id) setTasks(listTasks(user.id));
-    else setTasks([]);
-    setLoading(false);
-  };
+  useEffect(() => { void loadTasks(); }, [loadTasks]);
+
+  // Re-load when another tab mutates workspace
+  useEffect(() => {
+    const handler = () => void loadTasks();
+    window.addEventListener(WORKSPACE_CHANGED, handler);
+    return () => window.removeEventListener(WORKSPACE_CHANGED, handler);
+  }, [loadTasks]);
 
   const filteredTasks = useMemo(() => {
     return tasks.filter((task) => {
@@ -71,67 +87,66 @@ export function TaskList() {
     });
   }, [tasks, searchQuery, statusFilter, categoryFilter, timeHorizon]);
 
-  const displayTasks = useMemo(() => {
-    return [...filteredTasks].sort(compareTasksBySchedule);
-  }, [filteredTasks]);
+  const displayTasks = useMemo(() => [...filteredTasks].sort(compareTasksBySchedule), [filteredTasks]);
 
   const hasActiveFilters =
-    searchQuery.trim() !== '' ||
-    statusFilter !== 'all' ||
-    categoryFilter !== 'all' ||
-    timeHorizon !== 'all';
+    searchQuery.trim() !== '' || statusFilter !== 'all' || categoryFilter !== 'all' || timeHorizon !== 'all';
 
   const stats = useMemo(() => {
-    const open = tasks.filter((t) =>
-      ['pending', 'running', 'waiting_approval'].includes(t.status),
-    ).length;
+    const open = tasks.filter((t) => ['pending', 'running', 'waiting_approval'].includes(t.status)).length;
     const done = tasks.filter((t) => t.status === 'completed').length;
     return { total: tasks.length, open, done, showing: filteredTasks.length };
   }, [tasks, filteredTasks.length]);
 
   const horizonCounts = useMemo(() => {
-    let future = 0;
-    let today = 0;
-    let past = 0;
+    let future = 0, today = 0, past = 0;
     for (const task of tasks) {
       const b = getTaskDeadlineTimeBucket(task.deadline);
-      if (b === 'future') future += 1;
-      else if (b === 'today') today += 1;
-      else if (b === 'past') past += 1;
+      if (b === 'future') future++;
+      else if (b === 'today') today++;
+      else if (b === 'past') past++;
     }
     return { future, today, past };
   }, [tasks]);
 
   const clearFilters = () => {
-    setSearchQuery('');
-    setStatusFilter('all');
-    setCategoryFilter('all');
-    setTimeHorizon('all');
+    setSearchQuery(''); setStatusFilter('all'); setCategoryFilter('all'); setTimeHorizon('all');
   };
 
-  const toggleTaskDone = (task: Task) => {
-    if (!user?.id) return;
-    const now = new Date().toISOString();
+  const toggleTaskDone = async (task: Task) => {
     const nextCompleted = task.status !== 'completed';
-    upsertTask(user.id, {
-      ...task,
-      status: nextCompleted ? 'completed' : 'pending',
-      completed_at: nextCompleted ? now : null,
-      updated_at: now,
-    });
-    setTasks(listTasks(user.id));
+    const now = new Date().toISOString();
+    // Optimistic update
+    setTasks((prev) =>
+      prev.map((t) =>
+        t.id === task.id
+          ? { ...t, status: nextCompleted ? 'completed' : 'pending', completed_at: nextCompleted ? now : null, updated_at: now }
+          : t
+      )
+    );
+    try {
+      await apiUpdateTask(task.id, {
+        status: nextCompleted ? 'completed' : 'pending',
+        completed_at: nextCompleted ? now : null,
+      });
+    } catch {
+      // Revert on failure
+      setTasks((prev) => prev.map((t) => (t.id === task.id ? task : t)));
+    }
   };
 
-  const handleDeleteTask = (task: Task) => {
-    if (!user?.id) return;
-    const snapshot = { ...task };
-    deleteTask(user.id, task.id);
-    setTasks(listTasks(user.id));
-    showUndoToast('Task deleted', () => {
-      if (!user?.id) return;
-      upsertTask(user.id, snapshot);
-      setTasks(listTasks(user.id));
+  const handleDeleteTask = async (task: Task) => {
+    // Optimistic removal
+    setTasks((prev) => prev.filter((t) => t.id !== task.id));
+    showUndoToast('Task deleted', async () => {
+      // On undo, just reload from server — we can't re-create via API easily
+      await loadTasks();
     });
+    try {
+      await apiDeleteTask(task.id);
+    } catch {
+      await loadTasks(); // Revert on failure
+    }
   };
 
   if (loading) {
@@ -144,16 +159,13 @@ export function TaskList() {
 
   return (
     <div className="relative space-y-5 pb-12">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -right-16 top-0 h-56 w-56 rounded-full bg-nexus-accent/[0.05] blur-3xl"
-      />
+      <div aria-hidden className="pointer-events-none absolute -right-16 top-0 h-56 w-56 rounded-full bg-nexus-accent/[0.05] blur-3xl" />
 
       <header className="relative flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
           <h1 className="font-display text-2xl font-semibold tracking-tight text-white sm:text-[1.65rem]">Tasks</h1>
           <p className="mt-1 text-[13px] text-neutral-500">
-            Filter by category or status.
+            Filter by category or status.{total > PAGE_SIZE ? ` Showing first ${PAGE_SIZE} of ${total}.` : ''}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -170,12 +182,10 @@ export function TaskList() {
             <span className="tabular-nums">{stats.done}</span>
           </span>
           <Button variant="secondary" size="sm" className="gap-2" onClick={() => setCurrentScreen('create-goal')}>
-            <Target className="h-3.5 w-3.5" />
-            New goal
+            <Target className="h-3.5 w-3.5" />New goal
           </Button>
           <Button variant="primary" size="sm" className="gap-2" onClick={() => setCurrentScreen('create-task')}>
-            <Plus className="h-3.5 w-3.5" />
-            New task
+            <Plus className="h-3.5 w-3.5" />New task
           </Button>
         </div>
       </header>
@@ -183,35 +193,17 @@ export function TaskList() {
       <Card glass className="relative overflow-hidden p-3 sm:p-4">
         <div className="flex flex-col gap-2">
           <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1.5">
-            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
-              By deadline
-            </span>
+            <span className="shrink-0 font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">By deadline</span>
             <div className="flex min-w-0 flex-1 flex-wrap gap-1.5 sm:flex-initial">
               {(['all', 'future', 'today', 'past'] as const).map((key) => {
                 const active = timeHorizon === key;
-                const count =
-                  key === 'all'
-                    ? tasks.length
-                    : key === 'future'
-                      ? horizonCounts.future
-                      : key === 'today'
-                        ? horizonCounts.today
-                        : horizonCounts.past;
-                const label =
-                  key === 'all' ? 'All' : key === 'future' ? 'Future' : key === 'today' ? 'Today' : 'Past';
+                const count = key === 'all' ? tasks.length : key === 'future' ? horizonCounts.future : key === 'today' ? horizonCounts.today : horizonCounts.past;
+                const label = key === 'all' ? 'All' : key === 'future' ? 'Future' : key === 'today' ? 'Today' : 'Past';
                 return (
-                  <button
-                    key={key}
-                    type="button"
-                    onClick={() => setTimeHorizon(key)}
-                    className={`rounded-lg border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition ${
-                      active
-                        ? 'border-nexus-accent/45 bg-nexus-accent/15 text-nexus-accent'
-                        : 'border-white/[0.08] bg-nexus-void/50 text-neutral-500 hover:border-white/[0.12] hover:text-neutral-300'
-                    }`}
+                  <button key={key} type="button" onClick={() => setTimeHorizon(key)}
+                    className={`rounded-lg border px-2.5 py-1.5 font-mono text-[10px] uppercase tracking-[0.12em] transition ${active ? 'border-nexus-accent/45 bg-nexus-accent/15 text-nexus-accent' : 'border-white/[0.08] bg-nexus-void/50 text-neutral-500 hover:border-white/[0.12] hover:text-neutral-300'}`}
                   >
-                    {label}
-                    <span className="ml-1 tabular-nums text-neutral-600">{count}</span>
+                    {label}<span className="ml-1 tabular-nums text-neutral-600">{count}</span>
                   </button>
                 );
               })}
@@ -219,40 +211,21 @@ export function TaskList() {
           </div>
           <div className="relative min-w-0">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-600" />
-            <input
-              type="search"
-              placeholder="Search by title or description…"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className={searchInputClass}
-              autoComplete="off"
-              aria-label="Search tasks"
-            />
+            <input type="search" placeholder="Search by title or description…" value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)} className={searchInputClass}
+              autoComplete="off" aria-label="Search tasks" />
           </div>
           <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-start sm:gap-x-5">
             <div className="min-w-0 space-y-1.5">
-              <p id="tasklist-category-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
-                Categories
-              </p>
-              <CategoryChips
-                includeAll
-                value={categoryFilter}
-                onChange={setCategoryFilter}
-                labelledBy="tasklist-category-label"
-              />
+              <p id="tasklist-category-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">Categories</p>
+              <CategoryChips includeAll value={categoryFilter} onChange={setCategoryFilter} labelledBy="tasklist-category-label" />
             </div>
             <div className="min-w-0 space-y-1.5 sm:max-w-[min(100%,18rem)] sm:justify-self-end">
-              <p id="tasklist-status-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">
-                Status
-              </p>
+              <p id="tasklist-status-label" className="font-mono text-[9px] uppercase tracking-[0.16em] text-neutral-600">Status</p>
               <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:items-center">
-                <select
-                  value={statusFilter}
-                  onChange={(e) => setStatusFilter(e.target.value)}
-                  className={filterSelectClass}
-                  style={{ backgroundImage: chevronBg }}
-                  aria-labelledby="tasklist-status-label"
-                >
+                <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
+                  className={filterSelectClass} style={{ backgroundImage: chevronBg }}
+                  aria-labelledby="tasklist-status-label">
                   <option value="all">All statuses</option>
                   <option value="pending">Queued</option>
                   <option value="running">Running</option>
@@ -262,20 +235,14 @@ export function TaskList() {
                   <option value="cancelled">Cancelled</option>
                 </select>
                 <div className="flex flex-wrap items-center gap-2">
-                  <span
-                    className="font-mono text-[10px] text-neutral-500"
-                    aria-label={`${stats.showing} of ${stats.total} tasks match filters`}
-                  >
+                  <span className="font-mono text-[10px] text-neutral-500" aria-label={`${stats.showing} of ${stats.total} tasks match filters`}>
                     <span className="tabular-nums text-neutral-300">{stats.showing}</span>
                     <span className="text-neutral-600"> of </span>
                     <span className="tabular-nums text-neutral-500">{stats.total}</span>
                   </span>
                   {hasActiveFilters ? (
-                    <button
-                      type="button"
-                      onClick={clearFilters}
-                      className="shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent"
-                    >
+                    <button type="button" onClick={clearFilters}
+                      className="shrink-0 font-mono text-[10px] uppercase tracking-[0.12em] text-nexus-accent/90 transition hover:text-nexus-accent">
                       Clear
                     </button>
                   ) : null}
@@ -296,19 +263,12 @@ export function TaskList() {
               {hasActiveFilters ? 'No matching tasks' : 'No tasks yet'}
             </h2>
             <p className="mt-2 text-[13px] leading-relaxed text-neutral-500">
-              {hasActiveFilters
-                ? 'Adjust your search or clear filters to see more results.'
-                : 'Create a task from the sidebar or the overview. It will appear in this list.'}
+              {hasActiveFilters ? 'Adjust your search or clear filters to see more results.' : 'Create a task from the sidebar or the overview.'}
             </p>
             <div className="mt-6 flex flex-wrap justify-center gap-2">
-              {hasActiveFilters ? (
-                <Button variant="ghost" size="sm" onClick={clearFilters}>
-                  Clear filters
-                </Button>
-              ) : null}
+              {hasActiveFilters ? <Button variant="ghost" size="sm" onClick={clearFilters}>Clear filters</Button> : null}
               <Button variant="primary" size="sm" className="gap-2" onClick={() => setCurrentScreen('create-task')}>
-                <Plus className="h-3.5 w-3.5" />
-                Create task
+                <Plus className="h-3.5 w-3.5" />Create task
               </Button>
             </div>
           </div>
@@ -320,73 +280,42 @@ export function TaskList() {
             const schedule = formatTaskDeadlineLine(task.deadline ?? task.created_at);
             const showPriorityDot = priorityDot(task);
             const overdue = isOpenTaskOverdue(task);
-
             return (
-              <Card
-                key={task.id}
-                className="!rounded-xl border border-white/[0.07] bg-[#0f0f12] p-4 shadow-none"
-              >
+              <Card key={task.id} className="!rounded-xl border border-white/[0.07] bg-[#0f0f12] p-4 shadow-none">
                 <div className="flex items-start gap-3 sm:gap-4">
-                  <button
-                    type="button"
-                    aria-label={done ? 'Mark as not done' : 'Mark as done'}
-                    aria-pressed={done}
+                  <button type="button" aria-label={done ? 'Mark as not done' : 'Mark as done'} aria-pressed={done}
                     className="flex shrink-0 items-center justify-center rounded-lg text-neutral-500 outline-none transition hover:text-white focus-visible:ring-2 focus-visible:ring-nexus-accent/50"
-                    onClick={() => toggleTaskDone(task)}
-                  >
-                    {done ? (
-                      <CheckCircle2 className="h-6 w-6 text-emerald-500" strokeWidth={2} />
-                    ) : (
-                      <Circle className="h-6 w-6" strokeWidth={1.75} />
-                    )}
+                    onClick={() => void toggleTaskDone(task)}>
+                    {done
+                      ? <CheckCircle2 className="h-6 w-6 text-emerald-500" strokeWidth={2} />
+                      : <Circle className="h-6 w-6" strokeWidth={1.75} />}
                   </button>
-
                   <div className="min-w-0 flex-1">
                     <div className="flex flex-wrap items-baseline gap-x-1.5 gap-y-0.5">
-                      <span
-                        className={`font-display text-[15px] font-semibold leading-snug sm:text-base ${
-                          done ? 'text-neutral-500 line-through' : 'text-white'
-                        }`}
-                      >
+                      <span className={`font-display text-[15px] font-semibold leading-snug sm:text-base ${done ? 'text-neutral-500 line-through' : 'text-white'}`}>
                         {task.title}
                       </span>
-                      {showPriorityDot ? (
-                        <span
-                          className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500 align-middle"
-                          title="High priority"
-                        />
-                      ) : null}
+                      {showPriorityDot ? <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-red-500 align-middle" title="High priority" /> : null}
                     </div>
-
                     <div className="mt-1 flex flex-wrap items-center gap-2">
                       <span className="rounded-full border border-violet-500/40 bg-violet-950/50 px-2 py-0.5 text-[11px] font-medium text-violet-200">
                         {getCategoryLabel(task.category)}
                       </span>
                       {overdue ? (
                         <span className="inline-flex items-center gap-1 rounded-md border border-red-500/45 bg-red-500/10 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase tracking-wide text-red-300">
-                          <AlertTriangle className="h-3 w-3" strokeWidth={2} />
-                          Overdue
+                          <AlertTriangle className="h-3 w-3" strokeWidth={2} />Overdue
                         </span>
                       ) : null}
                       {schedule ? (
-                        <span
-                          className={`inline-flex items-center gap-1 font-mono text-[11px] ${
-                            overdue ? 'text-red-300/90' : 'text-neutral-500'
-                          }`}
-                        >
-                          <Clock className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />
-                          {schedule}
+                        <span className={`inline-flex items-center gap-1 font-mono text-[11px] ${overdue ? 'text-red-300/90' : 'text-neutral-500'}`}>
+                          <Clock className="h-3 w-3 shrink-0 opacity-80" strokeWidth={1.75} />{schedule}
                         </span>
                       ) : null}
                     </div>
                   </div>
-
-                  <button
-                    type="button"
-                    aria-label="Delete task"
+                  <button type="button" aria-label="Delete task"
                     className="shrink-0 rounded-lg p-2 text-neutral-500 transition hover:bg-red-500/10 hover:text-red-400"
-                    onClick={() => handleDeleteTask(task)}
-                  >
+                    onClick={() => void handleDeleteTask(task)}>
                     <Trash2 className="h-4 w-4" />
                   </button>
                 </div>

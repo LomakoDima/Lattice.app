@@ -1,5 +1,7 @@
 import { Router } from 'express';
+import { z } from 'zod';
 import { requireAuth, type AuthedRequest } from '../middleware/requireAuth.js';
+import { apiLimiter } from '../middleware/rateLimiters.js';
 import * as goalService from '../services/goalService.js';
 import {
   createGoalSchema,
@@ -10,17 +12,23 @@ import {
 
 export const goalsRouter = Router();
 
-goalsRouter.get('/', requireAuth, async (req, res, next) => {
+const paginationSchema = z.object({
+  limit:  z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+goalsRouter.get('/', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const { userId } = (req as AuthedRequest).auth;
-    const goals = await goalService.listGoals(userId);
-    res.json({ goals });
+    const { limit, offset } = paginationSchema.parse(req.query);
+    const result = await goalService.listGoals(userId, { limit, offset });
+    res.json(result); // { goals, total, limit, offset }
   } catch (e) {
     next(e);
   }
 });
 
-goalsRouter.post('/', requireAuth, async (req, res, next) => {
+goalsRouter.post('/', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const { userId } = (req as AuthedRequest).auth;
     const data = createGoalSchema.parse(req.body);
@@ -38,7 +46,7 @@ goalsRouter.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
-goalsRouter.get('/:id', requireAuth, async (req, res, next) => {
+goalsRouter.get('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;
@@ -53,7 +61,7 @@ goalsRouter.get('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-goalsRouter.patch('/:id', requireAuth, async (req, res, next) => {
+goalsRouter.patch('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;
@@ -80,7 +88,7 @@ goalsRouter.patch('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-goalsRouter.delete('/:id', requireAuth, async (req, res, next) => {
+goalsRouter.delete('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;

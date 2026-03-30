@@ -30,7 +30,7 @@ import { LoadingSpinner } from '../ui/LoadingSpinner';
 import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
 import { showFocusSessionEndNotification } from '../../lib/focusNotifications';
-import { listGoals, listTasks } from '../../lib/localWorkspace';
+import { apiListTasks, apiListGoals } from '../../lib/workspaceApi';
 import { Database } from '../../types/database';
 import {
   clearPomodoroUploadBlob,
@@ -218,8 +218,12 @@ export function Pomodoro() {
       setLoading(false);
       return;
     }
-    const mergedTasks = listTasks(user.id).slice(0, 100);
-    const mergedGoals = listGoals(user.id).filter((g) => g.status === 'active');
+    const [tasksRes, goalsRes] = await Promise.all([
+      apiListTasks({ limit: 100 }),
+      apiListGoals({ limit: 200 }),
+    ]);
+    const mergedTasks = tasksRes.tasks;
+    const mergedGoals = goalsRes.goals.filter((g) => g.status === 'active');
     const taskList = mergedTasks.filter(isActiveTask);
     const goalList: GoalPick[] = mergedGoals.map((g) => ({ id: g.id, title: g.title }));
     setTasks(taskList);

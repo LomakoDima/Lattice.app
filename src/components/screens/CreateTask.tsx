@@ -5,11 +5,10 @@ import { Button } from '../ui/Button';
 import { CategoryChips } from '../ui/CategoryChips';
 import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { listGoals, makeTaskRow, upsertTask } from '../../lib/localWorkspace';
-import { Database } from '../../types/database';
+import { apiCreateTask, apiListGoals } from '../../lib/workspaceApi';
 import { DEFAULT_CATEGORY } from '../../constants/categories';
 
-type GoalRow = Pick<Database['public']['Tables']['goals']['Row'], 'id' | 'title'>;
+type GoalOption = { id: string; title: string };
 
 const inputClass =
   'w-full rounded-xl border border-white/[0.08] bg-nexus-void/90 px-4 py-3 text-[15px] text-white placeholder:text-neutral-600 transition focus:border-nexus-accent/40 focus:outline-none focus:ring-1 focus:ring-nexus-accent/50';
@@ -27,7 +26,7 @@ export function CreateTask() {
   const [description, setDescription] = useState('');
   const [goalId, setGoalId] = useState<string>('');
   const [category, setCategory] = useState<string>(DEFAULT_CATEGORY);
-  const [goals, setGoals] = useState<GoalRow[]>([]);
+  const [goals, setGoals] = useState<GoalOption[]>([]);
   const [deadline, setDeadline] = useState('');
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState('');
@@ -40,51 +39,50 @@ export function CreateTask() {
     }
   }, []);
 
+  // Load active goals from the API
   useEffect(() => {
-    if (!user?.id) {
-      setGoals([]);
-      return;
-    }
-    const active = listGoals(user.id).filter((g) => g.status === 'active');
-    setGoals(active.map((g) => ({ id: g.id, title: g.title })));
+    if (!user?.id) { setGoals([]); return; }
+    apiListGoals({ limit: 200 })
+      .then(({ goals: rows }) => {
+        setGoals(
+          rows
+            .filter((g) => g.status === 'active')
+            .map((g) => ({ id: g.id, title: g.title }))
+        );
+      })
+      .catch(() => setGoals([]));
   }, [user?.id]);
 
   const linkedGoalTitle = useMemo(() => goals.find((g) => g.id === goalId)?.title, [goals, goalId]);
 
-  const goBack = () => {
-    setCurrentScreen('dashboard');
-  };
+  const goBack = () => setCurrentScreen('dashboard');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !user?.id) return;
 
     setCreating(true);
     setError('');
 
-    if (!user?.id) {
-      setError('Sign in required.');
+    try {
+      await apiCreateTask({
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        goal_id: goalId || null,
+        deadline: deadline ? new Date(deadline).toISOString() : null,
+      });
+      setTitle('');
+      setDescription('');
+      setGoalId('');
+      setCategory(DEFAULT_CATEGORY);
+      setDeadline('');
+      setCurrentScreen('tasks');
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create task. Please try again.');
+    } finally {
       setCreating(false);
-      return;
     }
-
-    const row = makeTaskRow({
-      userId: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      goalId: goalId || null,
-      category,
-      deadline: deadline ? new Date(deadline).toISOString() : null,
-    });
-    upsertTask(user.id, row);
-
-    setTitle('');
-    setDescription('');
-    setGoalId('');
-    setCategory(DEFAULT_CATEGORY);
-    setDeadline('');
-    setCreating(false);
-    setCurrentScreen('tasks');
   };
 
   return (
@@ -136,9 +134,7 @@ export function CreateTask() {
 
               <div className="grid gap-5 sm:grid-cols-2">
                 <div>
-                  <span id="task-category-label" className={labelClass}>
-                    Category
-                  </span>
+                  <span id="task-category-label" className={labelClass}>Category</span>
                   <CategoryChips
                     value={category}
                     onChange={setCategory}
@@ -161,9 +157,7 @@ export function CreateTask() {
                   >
                     <option value="">No goal</option>
                     {goals.map((g) => (
-                      <option key={g.id} value={g.id}>
-                        {g.title}
-                      </option>
+                      <option key={g.id} value={g.id}>{g.title}</option>
                     ))}
                   </select>
                   {goals.length === 0 ? (
@@ -172,9 +166,7 @@ export function CreateTask() {
                       <button
                         type="button"
                         className="text-nexus-accent underline decoration-nexus-accent/40 underline-offset-2 hover:text-[#d4f76f]"
-                        onClick={() => {
-                          setCurrentScreen('create-goal');
-                        }}
+                        onClick={() => setCurrentScreen('create-goal')}
                       >
                         create a goal
                       </button>{' '}
@@ -185,9 +177,7 @@ export function CreateTask() {
               </div>
 
               <div>
-                <label htmlFor="task-desc" className={labelClass}>
-                  Notes
-                </label>
+                <label htmlFor="task-desc" className={labelClass}>Notes</label>
                 <textarea
                   id="task-desc"
                   value={description}
@@ -232,9 +222,7 @@ export function CreateTask() {
               {title.trim() ? 'Ready to save.' : 'Enter a title to continue.'}
             </p>
             <div className="flex flex-wrap gap-3">
-              <Button type="button" variant="ghost" size="lg" onClick={goBack}>
-                Cancel
-              </Button>
+              <Button type="button" variant="ghost" size="lg" onClick={goBack}>Cancel</Button>
               <Button type="submit" variant="primary" size="lg" isLoading={creating} disabled={!title.trim()}>
                 Create task
               </Button>
