@@ -1,18 +1,15 @@
-import rateLimit from 'express-rate-limit';
+import rateLimit, { ipKeyGenerator } from 'express-rate-limit';
 import type { Request } from 'express';
 import type { AuthedRequest } from './requireAuth.js';
 
 /**
  * Key function: prefer authenticated userId, fall back to IP.
- * This prevents one user from consuming the shared IP bucket,
- * and blocks per-user brute-force regardless of source IP/VPN.
+ * Uses ipKeyGenerator helper for correct IPv6 handling (required by express-rate-limit v7+).
  */
 function userOrIpKey(req: Request): string {
   const authed = req as Partial<AuthedRequest>;
   if (authed.auth?.userId) return `uid:${authed.auth.userId}`;
-  // X-Forwarded-For is trusted because app.set('trust proxy', 1)
-  const ip = req.ip ?? req.socket.remoteAddress ?? 'unknown';
-  return `ip:${ip}`;
+  return `ip:${ipKeyGenerator(req)}`;
 }
 
 /** General auth endpoints: 60 req / 15 min per user-or-IP */
@@ -26,7 +23,6 @@ export const authLimiter = rateLimit({
 
 /**
  * Sensitive endpoints (login, register, 2FA verify): 10 req / 15 min per user-or-IP.
- * Tighter than the old limit (25) and now per-user so VPN/NAT can't share the budget.
  */
 export const strictAuthLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -44,5 +40,5 @@ export const apiLimiter = rateLimit({
   keyGenerator: userOrIpKey,
   standardHeaders: true,
   legacyHeaders: false,
-  skip: (req) => !(req as Partial<AuthedRequest>).auth?.userId, // skip unauthenticated (requireAuth handles that)
+  skip: (req) => !(req as Partial<AuthedRequest>).auth?.userId,
 });
