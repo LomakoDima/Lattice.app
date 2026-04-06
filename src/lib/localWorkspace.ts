@@ -193,11 +193,19 @@ export function makeGoalRow(input: {
 export const saveCreatedTask = upsertTask;
 export const saveCreatedGoal = upsertGoal;
 
-/** Back-compat: server list is always empty now. */
-export function mergeTasksWithLocal(_server: TaskRow[], userId: string): TaskRow[] {
-  return listTasks(userId);
+/** Merge server rows with local-only rows (same id: server wins). Sorted by created_at desc. */
+export function mergeTasksWithLocal(server: TaskRow[], userId: string): TaskRow[] {
+  const local = listTasks(userId);
+  const serverIds = new Set(server.map((t) => t.id));
+  const extra = local.filter((t) => !serverIds.has(t.id));
+  const merged = [...server, ...extra];
+  return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }
 
-export function mergeGoalsWithLocal(_server: GoalRow[], userId: string): GoalRow[] {
-  return listGoals(userId);
+export function mergeGoalsWithLocal(server: GoalRow[], userId: string): GoalRow[] {
+  const local = listGoals(userId);
+  const serverIds = new Set(server.map((g) => g.id));
+  const extra = local.filter((g) => !serverIds.has(g.id));
+  const merged = [...server, ...extra];
+  return merged.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 }

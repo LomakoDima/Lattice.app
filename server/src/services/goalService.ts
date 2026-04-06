@@ -5,7 +5,7 @@ import type { GoalRow } from '../types/workspace.js';
 export async function listGoals(userId: string): Promise<GoalRow[]> {
   const { rows } = await pool.query<GoalRow>(
     `SELECT id, user_id, title, description, category, status, target_date, created_at, updated_at
-     FROM goals WHERE user_id = $1 ORDER BY created_at DESC`,
+     FROM goals WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
     [userId]
   );
   return rows;

@@ -2,7 +2,9 @@ import { Router, type Request, type Response, type NextFunction } from 'express'
 import passport from 'passport';
 import rateLimit from 'express-rate-limit';
 import { env, getNormalizedFrontendOrigin, getOAuthCallbackUrl, isOAuthConfigured } from '../config/env.js';
+import { z } from 'zod';
 import * as authService from '../services/authService.js';
+import * as passwordResetService from '../services/passwordResetService.js';
 import { signPending2FA, verifyPending2FA } from '../services/tokenService.js';
 import { revokeAllRefreshTokensForUserId } from '../services/refreshTokenService.js';
 import { requireAuth, type AuthedRequest } from '../middleware/requireAuth.js';
@@ -55,10 +57,7 @@ authRouter.get('/oauth/config', authLimiter, (_req, res) => {
   res.json({
     frontendOrigin: getNormalizedFrontendOrigin(),
     googleClientId: env.GOOGLE_CLIENT_ID ?? null,
-    redirectUris: {
-      google: isOAuthConfigured('google') ? getOAuthCallbackUrl('google') : null,
-      github: isOAuthConfigured('github') ? getOAuthCallbackUrl('github') : null,
-    },
+    githubClientId: env.GITHUB_CLIENT_ID ?? null,
   });
 });
 
@@ -212,6 +211,38 @@ authRouter.post('/2fa/disable', authLimiter, requireAuth, async (req, res, next)
     const { userId } = (req as AuthedRequest).auth;
     const user = await authService.disableTotp(userId, req.body);
     res.json({ user });
+  } catch (e) {
+    next(e);
+  }
+});
+
+authRouter.post('/forgot-password', strictAuthLimiter, async (req, res, next) => {
+  try {
+    const { email } = z.object({ email: z.string().email() }).parse(req.body);
+    await passwordResetService.requestPasswordReset(email);
+    // Always 200 — do not reveal whether the email exists
+    res.json({ message: 'If an account with that email exists, a reset link has been sent.' });
+  } catch (e) {
+    next(e);
+  }
+});
+
+authRouter.post('/reset-password', strictAuthLimiter, async (req, res, next) => {
+  try {
+    const schema = z.object({
+      token: z.string().min(1),
+      password: z.string().min(8).max(128)
+        .regex(/[a-zA-Z]/, 'Password must include at least one letter')
+        .regex(/[0-9]/, 'Password must include at least one number'),
+    });
+    const { token, password } = schema.parse(req.body);
+    const ok = await passwordResetService.resetPassword(token, password);
+    if (!ok) {
+      res.status(400).json({ error: 'Invalid or expired reset token.' });
+      return;
+    }
+    authLog('password_reset_ok', {});
+    res.json({ message: 'Password has been reset. Please sign in.' });
   } catch (e) {
     next(e);
   }

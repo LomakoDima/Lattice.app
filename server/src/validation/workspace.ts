@@ -34,9 +34,15 @@ export const updateTaskSchema = createTaskSchema.partial().extend({
   progress: z.number().int().min(0).max(100).optional(),
   current_step: z.number().int().min(0).optional(),
   total_steps: z.number().int().min(0).optional(),
-  result: z.unknown().nullable().optional(),
-  error: z.string().nullable().optional(),
-  metadata: z.record(z.string(), z.unknown()).optional(),
+  result: z.unknown().nullable().optional().refine(
+    v => v === undefined || v === null || JSON.stringify(v).length <= 65536,
+    'Result payload too large (max 64 KB)'
+  ),
+  error: z.string().max(10000).nullable().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional().refine(
+    v => v === undefined || JSON.stringify(v).length <= 65536,
+    'Metadata too large (max 64 KB)'
+  ),
   started_at: z.union([z.string(), z.null()]).optional(),
   completed_at: z.union([z.string(), z.null()]).optional(),
 });

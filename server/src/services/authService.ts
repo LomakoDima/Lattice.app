@@ -18,6 +18,10 @@ import {
   normalizeTotpSecret,
   verifyTotpCode,
 } from './twoFactorService.js';
+import { isTotpBlocked, recordTotpFailure, clearTotpFailures } from '../lib/totpBruteGuard.js';
+import { isLoginBlocked, recordLoginFailure, clearLoginFailures } from '../lib/loginBruteGuard.js';
+
+const DUMMY_HASH = '$2b$12$KIXTnMOLsDyz2kDIYPGuna.USxqnvISiGH3O2nQTnOOyyVGJZJB6e';
 
 const strongPassword = z
   .string()
@@ -63,8 +67,8 @@ export async function register(input: unknown): Promise<AuthTokens> {
     const existing = await userService.findUserByEmail(client, data.email);
     if (existing) {
       await client.query('ROLLBACK');
-      const err = new Error('Email already registered');
-      (err as Error & { status: number }).status = 409;
+      const err = new Error('Registration failed. Please check your input and try again.');
+      (err as Error & { status: number }).status = 400;
       throw err;
     }
     const user = await userService.createUserWithPassword(client, {
@@ -88,20 +92,32 @@ export async function register(input: unknown): Promise<AuthTokens> {
 
 export async function login(input: unknown): Promise<LoginOutcome> {
   const data = loginSchema.parse(input);
+
+  if (isLoginBlocked(data.email)) {
+    await bcrypt.compare(data.password, DUMMY_HASH);
+    const err = new Error('Too many failed attempts. Try again later.');
+    (err as Error & { status: number }).status = 403;
+    throw err;
+  }
+
   const client = await pool.connect();
   try {
     const row = await userService.findUserByEmail(client, data.email);
     if (!row?.password_hash) {
+      await bcrypt.compare(data.password, DUMMY_HASH);
+      recordLoginFailure(data.email);
       const err = new Error('Invalid email or password');
       (err as Error & { status: number }).status = 401;
       throw err;
     }
     const ok = await bcrypt.compare(data.password, row.password_hash);
     if (!ok) {
+      recordLoginFailure(data.email);
       const err = new Error('Invalid email or password');
       (err as Error & { status: number }).status = 401;
       throw err;
     }
+    clearLoginFailures(data.email);
     if (row.two_factor_enabled && row.totp_secret) {
       return { needsTwoFactor: true, userId: row.id };
     }
@@ -128,6 +144,11 @@ export async function login(input: unknown): Promise<LoginOutcome> {
 }
 
 export async function verifyTwoFactorLogin(userId: string, codeRaw: string): Promise<AuthTokens> {
+  if (isTotpBlocked(userId)) {
+    const err = new Error('Too many failed attempts. Try again later.');
+    (err as Error & { status: number }).status = 403;
+    throw err;
+  }
   const code = totpCodeSchema.parse({ code: codeRaw }).code;
   const client = await pool.connect();
   try {
@@ -141,10 +162,12 @@ export async function verifyTwoFactorLogin(userId: string, codeRaw: string): Pro
     }
     if (!verifyTotpCode(row.totp_secret, code)) {
       await client.query('ROLLBACK');
+      recordTotpFailure(userId);
       const err = new Error('Invalid authentication code');
       (err as Error & { status: number }).status = 401;
       throw err;
     }
+    clearTotpFailures(userId);
     const user = userService.rowToPublic(row);
     await revokeAllRefreshTokensForUser(client, user.id);
     const refreshToken = generateRefreshToken();

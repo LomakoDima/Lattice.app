@@ -3,9 +3,7 @@
  * Enable in production: AUTH_VERBOSE=1. Disable in dev: AUTH_VERBOSE=0.
  */
 function shouldLog(): boolean {
-  if (process.env.AUTH_VERBOSE === '0') return false;
-  if (process.env.AUTH_VERBOSE === '1') return true;
-  return process.env.NODE_ENV !== 'production';
+  return process.env.AUTH_VERBOSE === '1';
 }
 
 export function authLog(event: string, detail?: Record<string, unknown>): void {

@@ -1,5 +1,6 @@
 import type { Pool, PoolClient } from 'pg';
 import type { PublicUser, UserRow } from '../types/user.js';
+import { encryptTotpSecret } from '../lib/totpCipher.js';
 
 function rowToPublic(r: UserRow): PublicUser {
   return {
@@ -72,9 +73,10 @@ export async function enableUserTotp(
   userId: string,
   secret: string
 ): Promise<void> {
+  const encrypted = encryptTotpSecret(secret);
   await db.query(
     `UPDATE users SET totp_secret = $2, two_factor_enabled = TRUE, updated_at = NOW() WHERE id = $1`,
-    [userId, secret]
+    [userId, encrypted]
   );
 }
 

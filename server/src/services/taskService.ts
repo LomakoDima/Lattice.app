@@ -8,7 +8,7 @@ export async function listTasks(userId: string): Promise<TaskRow[]> {
     `SELECT id, user_id, goal_id, category, title, description, mode, status, priority,
             progress, current_step, total_steps, result, error, metadata,
             created_at, updated_at, started_at, completed_at, deadline
-     FROM tasks WHERE user_id = $1 ORDER BY created_at DESC`,
+     FROM tasks WHERE user_id = $1 ORDER BY created_at DESC LIMIT 100`,
     [userId]
   );
   return rows;
@@ -98,83 +98,105 @@ export async function updateTask(
     completed_at: Date | null;
   }>
 ): Promise<TaskRow | null> {
-  const current = await getTaskById(userId, taskId);
-  if (!current) return null;
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
 
-  if (patch.goal_id !== undefined && patch.goal_id !== null) {
-    const g = await goalService.getGoalById(userId, patch.goal_id);
-    if (!g) {
-      const err = new Error('Goal not found');
-      (err as Error & { status: number }).status = 404;
-      throw err;
+    const { rows: locked } = await client.query<TaskRow>(
+      `SELECT id, user_id, goal_id, category, title, description, mode, status, priority,
+              progress, current_step, total_steps, result, error, metadata,
+              created_at, updated_at, started_at, completed_at, deadline
+       FROM tasks WHERE id = $1 AND user_id = $2 FOR UPDATE`,
+      [taskId, userId]
+    );
+    const current = locked[0] ?? null;
+    if (!current) {
+      await client.query('ROLLBACK');
+      return null;
     }
+
+    if (patch.goal_id !== undefined && patch.goal_id !== null) {
+      const g = await goalService.getGoalById(userId, patch.goal_id);
+      if (!g) {
+        await client.query('ROLLBACK');
+        const err = new Error('Goal not found');
+        (err as Error & { status: number }).status = 404;
+        throw err;
+      }
+    }
+
+    const goal_id = patch.goal_id !== undefined ? patch.goal_id : current.goal_id;
+    const title = patch.title ?? current.title;
+    const description = patch.description ?? current.description;
+    const category = patch.category ?? current.category;
+    const deadline = patch.deadline !== undefined ? patch.deadline : current.deadline;
+    const mode = patch.mode ?? current.mode;
+    const status = patch.status ?? current.status;
+    const priority = patch.priority ?? current.priority;
+    const progress = patch.progress ?? current.progress;
+    const current_step = patch.current_step ?? current.current_step;
+    const total_steps = patch.total_steps ?? current.total_steps;
+    const result = patch.result !== undefined ? patch.result : current.result;
+    const error = patch.error !== undefined ? patch.error : current.error;
+    const metadata = patch.metadata ?? current.metadata;
+    const started_at = patch.started_at !== undefined ? patch.started_at : current.started_at;
+    const completed_at = patch.completed_at !== undefined ? patch.completed_at : current.completed_at;
+
+    const resultJson =
+      result === null || result === undefined ? null : JSON.stringify(result);
+
+    const { rows } = await client.query<TaskRow>(
+      `UPDATE tasks SET
+         goal_id = $2,
+         category = $3,
+         title = $4,
+         description = $5,
+         mode = $6,
+         status = $7,
+         priority = $8,
+         progress = $9,
+         current_step = $10,
+         total_steps = $11,
+         result = $12::jsonb,
+         error = $13,
+         metadata = $14::jsonb,
+         deadline = $15,
+         started_at = $16,
+         completed_at = $17,
+         updated_at = NOW()
+       WHERE id = $1 AND user_id = $18
+       RETURNING id, user_id, goal_id, category, title, description, mode, status, priority,
+                 progress, current_step, total_steps, result, error, metadata,
+                 created_at, updated_at, started_at, completed_at, deadline`,
+      [
+        taskId,
+        goal_id,
+        category,
+        title,
+        description,
+        mode,
+        status,
+        priority,
+        progress,
+        current_step,
+        total_steps,
+        resultJson,
+        error,
+        JSON.stringify(metadata),
+        deadline,
+        started_at,
+        completed_at,
+        userId,
+      ]
+    );
+    await client.query('COMMIT');
+    return rows[0] ?? null;
+  } catch (e) {
+    await client.query('ROLLBACK');
+    throw e;
+  } finally {
+    client.release();
   }
-
-  const goal_id = patch.goal_id !== undefined ? patch.goal_id : current.goal_id;
-  const title = patch.title ?? current.title;
-  const description = patch.description ?? current.description;
-  const category = patch.category ?? current.category;
-  const deadline = patch.deadline !== undefined ? patch.deadline : current.deadline;
-  const mode = patch.mode ?? current.mode;
-  const status = patch.status ?? current.status;
-  const priority = patch.priority ?? current.priority;
-  const progress = patch.progress ?? current.progress;
-  const current_step = patch.current_step ?? current.current_step;
-  const total_steps = patch.total_steps ?? current.total_steps;
-  const result = patch.result !== undefined ? patch.result : current.result;
-  const error = patch.error !== undefined ? patch.error : current.error;
-  const metadata = patch.metadata ?? current.metadata;
-  const started_at = patch.started_at !== undefined ? patch.started_at : current.started_at;
-  const completed_at = patch.completed_at !== undefined ? patch.completed_at : current.completed_at;
-
-  const resultJson =
-    result === null || result === undefined ? null : JSON.stringify(result);
-
-  const { rows } = await pool.query<TaskRow>(
-    `UPDATE tasks SET
-       goal_id = $2,
-       category = $3,
-       title = $4,
-       description = $5,
-       mode = $6,
-       status = $7,
-       priority = $8,
-       progress = $9,
-       current_step = $10,
-       total_steps = $11,
-       result = $12::jsonb,
-       error = $13,
-       metadata = $14::jsonb,
-       deadline = $15,
-       started_at = $16,
-       completed_at = $17,
-       updated_at = NOW()
-     WHERE id = $1 AND user_id = $18
-     RETURNING id, user_id, goal_id, category, title, description, mode, status, priority,
-               progress, current_step, total_steps, result, error, metadata,
-               created_at, updated_at, started_at, completed_at, deadline`,
-    [
-      taskId,
-      goal_id,
-      category,
-      title,
-      description,
-      mode,
-      status,
-      priority,
-      progress,
-      current_step,
-      total_steps,
-      resultJson,
-      error,
-      JSON.stringify(metadata),
-      deadline,
-      started_at,
-      completed_at,
-      userId,
-    ]
-  );
-  return rows[0] ?? null;
 }
 
 export async function deleteTask(userId: string, taskId: string): Promise<boolean> {

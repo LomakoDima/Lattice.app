@@ -9,6 +9,7 @@ import { authRouter } from './routes/auth.js';
 import { goalsRouter } from './routes/goals.js';
 import { tasksRouter } from './routes/tasks.js';
 import { errorHandler } from './middleware/errorHandler.js';
+import { csrfProtection } from './middleware/csrfProtection.js';
 import { registerPassportStrategies } from './passport/registerStrategies.js';
 
 registerPassportStrategies();
@@ -49,6 +50,7 @@ app.use(cors({ origin: getNormalizedFrontendOrigin(), credentials: true }));
 app.use(express.json());
 app.use(cookieParser());
 app.use(passport.initialize());
+app.use('/api', csrfProtection);
 
 app.get('/api/health', (_req, res) => {
   res.status(200).json({ ok: true, service: 'lattice-api' });

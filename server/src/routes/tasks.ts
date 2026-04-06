@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import rateLimit from 'express-rate-limit';
 import { requireAuth, type AuthedRequest } from '../middleware/requireAuth.js';
 import * as taskService from '../services/taskService.js';
 import type { TaskRow } from '../types/workspace.js';
@@ -9,7 +10,16 @@ import {
   uuidParam,
 } from '../validation/workspace.js';
 
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 300,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 export const tasksRouter = Router();
+
+tasksRouter.use(apiLimiter);
 
 tasksRouter.get('/', requireAuth, async (req, res, next) => {
   try {

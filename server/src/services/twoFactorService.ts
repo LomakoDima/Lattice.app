@@ -1,5 +1,6 @@
 import { generateSecret, generateURI, verifySync } from 'otplib';
 import QRCode from 'qrcode';
+import { decryptTotpSecret, isEncrypted } from '../lib/totpCipher.js';
 
 /** Base32 secret as stored / shown (spaces stripped, case normalized for decoders). */
 export function normalizeTotpSecret(secret: string): string {
@@ -11,13 +12,25 @@ export function generateTotpSecret(): string {
 }
 
 /**
+ * Recover the plaintext Base32 secret from a DB value that may be
+ * AES-256-GCM encrypted (new) or legacy plaintext Base32 (old rows).
+ */
+export function resolveTotpSecret(stored: string): string {
+  if (isEncrypted(stored)) {
+    return decryptTotpSecret(stored);
+  }
+  return stored;
+}
+
+/**
  * Verify TOTP. Uses epoch tolerance — otplib defaults to 0s drift, which rejects valid codes
  * if phone/server clocks differ slightly; Microsoft/Google Authenticator expect ±1 step (~30s).
  */
-export function verifyTotpCode(secret: string, code: string): boolean {
+export function verifyTotpCode(storedSecret: string, code: string): boolean {
   const normalized = code.replace(/\s/g, '');
   if (!/^\d{6}$/.test(normalized)) return false;
-  const secretNorm = normalizeTotpSecret(secret);
+  const plain = resolveTotpSecret(storedSecret);
+  const secretNorm = normalizeTotpSecret(plain);
   if (!secretNorm) return false;
   const result = verifySync({
     secret: secretNorm,
