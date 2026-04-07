@@ -1,6 +1,11 @@
 import { Router } from 'express';
+<<<<<<< HEAD
 import rateLimit from 'express-rate-limit';
+=======
+import { z } from 'zod';
+>>>>>>> main
 import { requireAuth, type AuthedRequest } from '../middleware/requireAuth.js';
+import { apiLimiter } from '../middleware/rateLimiters.js';
 import * as taskService from '../services/taskService.js';
 import type { TaskRow } from '../types/workspace.js';
 import {
@@ -19,19 +24,29 @@ const apiLimiter = rateLimit({
 
 export const tasksRouter = Router();
 
+<<<<<<< HEAD
 tasksRouter.use(apiLimiter);
 
 tasksRouter.get('/', requireAuth, async (req, res, next) => {
+=======
+const paginationSchema = z.object({
+  limit:  z.coerce.number().int().min(1).max(200).optional(),
+  offset: z.coerce.number().int().min(0).optional(),
+});
+
+tasksRouter.get('/', apiLimiter, requireAuth, async (req, res, next) => {
+>>>>>>> main
   try {
     const { userId } = (req as AuthedRequest).auth;
-    const tasks = await taskService.listTasks(userId);
-    res.json({ tasks });
+    const { limit, offset } = paginationSchema.parse(req.query);
+    const result = await taskService.listTasks(userId, { limit, offset });
+    res.json(result); // { tasks, total, limit, offset }
   } catch (e) {
     next(e);
   }
 });
 
-tasksRouter.post('/', requireAuth, async (req, res, next) => {
+tasksRouter.post('/', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const { userId } = (req as AuthedRequest).auth;
     const data = createTaskSchema.parse(req.body);
@@ -52,7 +67,7 @@ tasksRouter.post('/', requireAuth, async (req, res, next) => {
   }
 });
 
-tasksRouter.get('/:id', requireAuth, async (req, res, next) => {
+tasksRouter.get('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;
@@ -67,7 +82,7 @@ tasksRouter.get('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-tasksRouter.patch('/:id', requireAuth, async (req, res, next) => {
+tasksRouter.patch('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;
@@ -110,7 +125,7 @@ tasksRouter.patch('/:id', requireAuth, async (req, res, next) => {
   }
 });
 
-tasksRouter.delete('/:id', requireAuth, async (req, res, next) => {
+tasksRouter.delete('/:id', apiLimiter, requireAuth, async (req, res, next) => {
   try {
     const id = uuidParam.parse(req.params.id);
     const { userId } = (req as AuthedRequest).auth;

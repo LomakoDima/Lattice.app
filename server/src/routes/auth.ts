@@ -1,6 +1,6 @@
 import { Router, type Request, type Response, type NextFunction } from 'express';
 import passport from 'passport';
-import rateLimit from 'express-rate-limit';
+import { authLimiter, strictAuthLimiter } from '../middleware/rateLimiters.js';
 import { env, getNormalizedFrontendOrigin, getOAuthCallbackUrl, isOAuthConfigured } from '../config/env.js';
 import { z } from 'zod';
 import * as authService from '../services/authService.js';
@@ -36,20 +36,6 @@ function clearAllAuthCookies(res: Response): void {
   res.clearCookie(COOKIE_REFRESH, refreshCookieClearOpts());
   res.clearCookie(COOKIE_2FA_PENDING, pending2FACookieClearOpts());
 }
-
-const authLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 60,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
-
-const strictAuthLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 25,
-  standardHeaders: true,
-  legacyHeaders: false,
-});
 
 export const authRouter = Router();
 

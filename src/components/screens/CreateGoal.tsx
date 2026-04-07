@@ -5,7 +5,7 @@ import { Button } from '../ui/Button';
 import { CategoryChips } from '../ui/CategoryChips';
 import { useAuth } from '../../contexts/useAuth';
 import { useNavigation } from '../../contexts/NavigationContext';
-import { makeGoalRow, upsertGoal } from '../../lib/localWorkspace';
+import { apiCreateGoal } from '../../lib/workspaceApi';
 import { DEFAULT_CATEGORY } from '../../constants/categories';
 
 const inputClass =
@@ -23,38 +23,32 @@ export function CreateGoal() {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
 
-  const goBack = () => {
-    setCurrentScreen('dashboard');
-  };
+  const goBack = () => setCurrentScreen('dashboard');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!title.trim()) return;
+    if (!title.trim() || !user?.id) return;
 
     setSaving(true);
     setError('');
 
-    if (!user?.id) {
-      setError('Sign in required.');
+    try {
+      await apiCreateGoal({
+        title: title.trim(),
+        description: description.trim(),
+        category,
+        target_date: targetDate || null,
+      });
+      setTitle('');
+      setDescription('');
+      setTargetDate('');
+      setCategory(DEFAULT_CATEGORY);
+      goBack();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to create goal. Please try again.');
+    } finally {
       setSaving(false);
-      return;
     }
-
-    const row = makeGoalRow({
-      userId: user.id,
-      title: title.trim(),
-      description: description.trim(),
-      category,
-      targetDate: targetDate || null,
-    });
-    upsertGoal(user.id, row);
-
-    setTitle('');
-    setDescription('');
-    setTargetDate('');
-    setCategory(DEFAULT_CATEGORY);
-    setSaving(false);
-    goBack();
   };
 
   return (
@@ -83,9 +77,7 @@ export function CreateGoal() {
         <Card glass className="p-6 sm:p-8">
           <div className="space-y-6">
             <div>
-              <label htmlFor="goal-title" className={labelClass}>
-                Title
-              </label>
+              <label htmlFor="goal-title" className={labelClass}>Title</label>
               <input
                 id="goal-title"
                 type="text"
@@ -98,9 +90,7 @@ export function CreateGoal() {
             </div>
 
             <div>
-              <span id="goal-category-label" className={labelClass}>
-                Category
-              </span>
+              <span id="goal-category-label" className={labelClass}>Category</span>
               <CategoryChips
                 value={category}
                 onChange={setCategory}
@@ -110,9 +100,7 @@ export function CreateGoal() {
             </div>
 
             <div>
-              <label htmlFor="goal-desc" className={labelClass}>
-                Objective
-              </label>
+              <label htmlFor="goal-desc" className={labelClass}>Objective</label>
               <textarea
                 id="goal-desc"
                 value={description}
@@ -142,16 +130,16 @@ export function CreateGoal() {
         </Card>
 
         {error && (
-          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">{error}</div>
+          <div className="rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-300">
+            {error}
+          </div>
         )}
 
         <div className="flex flex-wrap gap-3">
           <Button type="submit" variant="primary" size="lg" isLoading={saving} disabled={!title.trim()}>
             Create goal
           </Button>
-          <Button type="button" variant="ghost" size="lg" onClick={goBack}>
-            Cancel
-          </Button>
+          <Button type="button" variant="ghost" size="lg" onClick={goBack}>Cancel</Button>
         </div>
       </form>
     </div>

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Check } from 'lucide-react';
 import { useAuth } from '../contexts/useAuth';
 import { getGreetingName } from '../lib/greeting';
-import { listGoals, listTasks } from '../lib/localWorkspace';
+import { apiListTasks, apiListGoals } from '../lib/workspaceApi';
 import { WORKSPACE_CHANGED } from '../lib/workspaceEvents';
 
 const DISMISS_PREFIX = 'lattice-celebration-dismissed-session';
@@ -13,52 +13,41 @@ function dismissStorageKey(userId: string) {
 
 const OPEN_TASK = new Set(['pending', 'running', 'waiting_approval']);
 
-function isFullyWrappedUp(userId: string): boolean {
-  const tasks = listTasks(userId);
-  const goals = listGoals(userId);
-  if (tasks.length === 0 && goals.length === 0) return false;
-  const anyOpenTask = tasks.some((t) => OPEN_TASK.has(t.status));
-  const anyActiveGoal = goals.some((g) => g.status === 'active');
-  return !anyOpenTask && !anyActiveGoal;
-}
-
 export function WorkspaceCelebration() {
   const { user } = useAuth();
   const [visible, setVisible] = useState(false);
 
-  const sync = useCallback(() => {
+  const sync = useCallback(async () => {
     const uid = user?.id;
-    if (!uid) {
-      setVisible(false);
-      return;
-    }
-    const done = isFullyWrappedUp(uid);
-    if (!done) {
-      try {
-        sessionStorage.removeItem(dismissStorageKey(uid));
-      } catch {
-        /* ignore */
-      }
-      setVisible(false);
-      return;
-    }
+    if (!uid) { setVisible(false); return; }
     try {
-      if (sessionStorage.getItem(dismissStorageKey(uid)) === '1') {
+      const [tasksRes, goalsRes] = await Promise.all([
+        apiListTasks({ limit: 1 }),   // just need total
+        apiListGoals({ limit: 200 }),
+      ]);
+      const anyOpenTask = tasksRes.tasks.some((t) => OPEN_TASK.has(t.status as string));
+      const anyActiveGoal = goalsRes.goals.some((g) => g.status === 'active');
+      const done = (tasksRes.total > 0 || goalsRes.goals.length > 0) && !anyOpenTask && !anyActiveGoal;
+      if (!done) {
+        try { sessionStorage.removeItem(dismissStorageKey(uid)); } catch { /* ignore */ }
         setVisible(false);
         return;
       }
+      try {
+        if (sessionStorage.getItem(dismissStorageKey(uid)) === '1') { setVisible(false); return; }
+      } catch { /* ignore */ }
+      setVisible(true);
     } catch {
-      /* ignore */
+      setVisible(false);
     }
-    setVisible(true);
   }, [user?.id]);
 
   useEffect(() => {
-    sync();
+    void sync();
   }, [sync]);
 
   useEffect(() => {
-    const onChanged = () => sync();
+    const onChanged = () => void sync();
     window.addEventListener(WORKSPACE_CHANGED, onChanged);
     return () => window.removeEventListener(WORKSPACE_CHANGED, onChanged);
   }, [sync]);

@@ -15,7 +15,7 @@ import { useNavigate } from 'react-router-dom';
 import { useNavigation, type Screen } from '../../contexts/NavigationContext';
 import type { LocalUser } from '../../contexts/auth-types';
 import { useAuth } from '../../contexts/useAuth';
-import { listGoals, listTasks } from '../../lib/localWorkspace';
+import { apiListTasks, apiListGoals } from '../../lib/workspaceApi';
 
 export interface SidebarProps {
   /** When true, mobile drawer is visible (lg+ ignores this). */
@@ -58,8 +58,12 @@ export function Sidebar({ mobileOpen = false, onMobileClose }: SidebarProps = {}
   const loadPinned = useCallback(async () => {
     if (!user) return;
 
-    const mergedTasks = listTasks(user.id);
-    const mergedGoals = listGoals(user.id).filter((g) => g.status === 'active');
+    const [tasksRes, goalsRes] = await Promise.all([
+      apiListTasks({ limit: 200 }),
+      apiListGoals({ limit: 200 }),
+    ]);
+    const mergedTasks = tasksRes.tasks;
+    const mergedGoals = goalsRes.goals.filter((g) => g.status === 'active');
 
     setTaskPreview({
       count: mergedTasks.length,
